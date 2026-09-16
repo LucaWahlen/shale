@@ -285,7 +285,7 @@ export function SchedulePage() {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
-        <Link to="/" className="text-lg font-semibold tracking-tight hover:underline focus-visible:ring-2 focus-visible:ring-accent">
+        <Link to="/" className="text-lg font-semibold tracking-tight focus-visible:ring-2 focus-visible:ring-accent">
           {appName}
         </Link>
         <HeaderControls />
@@ -336,7 +336,7 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
-        <Link to="/" className="text-lg font-semibold tracking-tight hover:underline focus-visible:ring-2 focus-visible:ring-accent">
+        <Link to="/" className="text-lg font-semibold tracking-tight focus-visible:ring-2 focus-visible:ring-accent">
           {appName}
         </Link>
         <HeaderControls />

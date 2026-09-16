@@ -132,7 +132,7 @@ export function AdminSchedules() {
                   <div className="min-w-0 flex-1">
                     <Link
                       to={`/s/${s.id}`}
-                      className="text-base font-semibold hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+                      className="text-base font-semibold focus-visible:ring-2 focus-visible:ring-accent"
                     >
                       {s.title}
                     </Link>
