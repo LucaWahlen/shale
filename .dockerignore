@@ -1,0 +1,10 @@
+# Keep build context lean and prevent host artifacts leaking into stages
+frontend/node_modules
+frontend/dist
+backend/web/dist
+data
+*.db
+*.db-shm
+*.db-wal
+.git
+.env

@@ -1,0 +1,17 @@
+services:
+  shale:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: localhost/shale:latest
+    ports:
+      - "8080:8080"
+    environment:
+      SHALE_ADMIN_PASSWORD: ${SHALE_ADMIN_PASSWORD:?set SHALE_ADMIN_PASSWORD, e.g. in .env}
+      SHALE_DB_PATH: /data/shale.db
+    volumes:
+      - shale-data:/data
+    restart: unless-stopped
+
+volumes:
+  shale-data:

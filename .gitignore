@@ -1,0 +1,27 @@
+# Data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Node / frontend
+node_modules/
+dist/
+frontend/dist/
+!backend/web/dist/index.html
+*.local
+
+# Go
+/backend/bin/
+*.test
+*.out
+
+# Environment
+.env
+
+# Editors / OS
+.DS_Store
+*.swp
+
+# Devcontainer
+.devcontainer
