@@ -6,6 +6,11 @@
   --field-border: var(--border);
 }
 
+html {
+  background-color: var(--background);
+  overscroll-behavior-y: none;
+}
+
 .menu-item,
 .menu-item * {
   box-shadow: none !important;

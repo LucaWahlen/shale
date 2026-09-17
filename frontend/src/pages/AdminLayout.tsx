@@ -45,7 +45,7 @@ export function AdminLayout() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-10 border-b border-border/60 bg-background/80 backdrop-blur">
+      <header className="sticky top-0 z-10 transform-gpu border-b border-border/60 bg-background/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <Link to="/" className="text-lg font-semibold tracking-tight">
               {appName}
