@@ -10,10 +10,11 @@ import (
 type EventService struct {
 	schedules domain.ScheduleRepository
 	events    domain.EventRepository
+	audit     *AuditService
 }
 
-func NewEventService(schedules domain.ScheduleRepository, events domain.EventRepository) *EventService {
-	return &EventService{schedules: schedules, events: events}
+func NewEventService(schedules domain.ScheduleRepository, events domain.EventRepository, audit *AuditService) *EventService {
+	return &EventService{schedules: schedules, events: events, audit: audit}
 }
 
 type EventInput struct {
@@ -77,7 +78,8 @@ func validateEventInput(in EventInput) (EventInput, error) {
 }
 
 func (s *EventService) Create(ctx context.Context, scheduleID string, in EventInput) (domain.Event, error) {
-	if _, err := s.schedules.GetByID(ctx, scheduleID); err != nil {
+	sched, err := s.schedules.GetByID(ctx, scheduleID)
+	if err != nil {
 		return domain.Event{}, err
 	}
 	clean, err := validateEventInput(in)
@@ -96,6 +98,14 @@ func (s *EventService) Create(ctx context.Context, scheduleID string, in EventIn
 	if err := s.events.Create(ctx, &ev); err != nil {
 		return domain.Event{}, err
 	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionEventCreated,
+		Actor:         domain.AuditActorAdmin,
+		ScheduleID:    sched.ID,
+		ScheduleTitle: sched.Title,
+		EventID:       ev.ID,
+		EventName:     ev.Name,
+	})
 	return ev, nil
 }
 
@@ -139,9 +149,40 @@ func (s *EventService) Patch(ctx context.Context, id string, patch EventPatch) (
 	if err := s.events.Update(ctx, &existing); err != nil {
 		return domain.Event{}, err
 	}
+	sched, err := s.schedules.GetByID(ctx, existing.ScheduleID)
+	if err != nil {
+		return domain.Event{}, err
+	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionEventUpdated,
+		Actor:         domain.AuditActorAdmin,
+		ScheduleID:    sched.ID,
+		ScheduleTitle: sched.Title,
+		EventID:       existing.ID,
+		EventName:     existing.Name,
+	})
 	return existing, nil
 }
 
 func (s *EventService) Delete(ctx context.Context, id string) error {
-	return s.events.Delete(ctx, id)
+	existing, err := s.events.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.events.Delete(ctx, id); err != nil {
+		return err
+	}
+	sched, err := s.schedules.GetByID(ctx, existing.ScheduleID)
+	if err != nil {
+		return err
+	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionEventDeleted,
+		Actor:         domain.AuditActorAdmin,
+		ScheduleID:    sched.ID,
+		ScheduleTitle: sched.Title,
+		EventID:       existing.ID,
+		EventName:     existing.Name,
+	})
+	return nil
 }

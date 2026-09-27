@@ -38,8 +38,8 @@ func newTransferEnv(t *testing.T) *transferEnv {
 	attendeeRepo := sqlite.NewAttendeeRepo(store)
 	settingsRepo := sqlite.NewSettingsRepo(store)
 	clock := func() time.Time { return time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC) }
-	schedules := NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, clock)
-	events := NewEventService(scheduleRepo, eventRepo)
+	schedules := NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, nil, clock)
+	events := NewEventService(scheduleRepo, eventRepo, nil)
 	settings := NewSettingsService(settingsRepo)
 	transfer := NewTransferService(scheduleRepo, eventRepo, attendeeRepo, settings, store, clock)
 	return &transferEnv{
@@ -47,7 +47,7 @@ func newTransferEnv(t *testing.T) *transferEnv {
 		events:      events,
 		settings:    settings,
 		transfer:    transfer,
-		attendeeSvc: NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, clock),
+		attendeeSvc: NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, nil, clock),
 	}
 }
 

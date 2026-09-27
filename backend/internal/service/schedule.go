@@ -11,11 +11,12 @@ type ScheduleService struct {
 	schedules domain.ScheduleRepository
 	events    domain.EventRepository
 	attendees domain.AttendeeRepository
+	audit     *AuditService
 	clock     Clock
 }
 
-func NewScheduleService(schedules domain.ScheduleRepository, events domain.EventRepository, attendees domain.AttendeeRepository, clock Clock) *ScheduleService {
-	return &ScheduleService{schedules: schedules, events: events, attendees: attendees, clock: clock}
+func NewScheduleService(schedules domain.ScheduleRepository, events domain.EventRepository, attendees domain.AttendeeRepository, audit *AuditService, clock Clock) *ScheduleService {
+	return &ScheduleService{schedules: schedules, events: events, attendees: attendees, audit: audit, clock: clock}
 }
 
 type ScheduleInput struct {
@@ -197,6 +198,12 @@ func (s *ScheduleService) Create(ctx context.Context, in ScheduleInput) (domain.
 	if err := s.schedules.Create(ctx, &sched); err != nil {
 		return domain.Schedule{}, err
 	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionScheduleCreated,
+		Actor:         domain.AuditActorAdmin,
+		ScheduleID:    sched.ID,
+		ScheduleTitle: sched.Title,
+	})
 	return sched, nil
 }
 
@@ -217,11 +224,30 @@ func (s *ScheduleService) Update(ctx context.Context, id string, in ScheduleInpu
 	if err := s.schedules.Update(ctx, &existing); err != nil {
 		return domain.Schedule{}, err
 	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionScheduleUpdated,
+		Actor:         domain.AuditActorAdmin,
+		ScheduleID:    existing.ID,
+		ScheduleTitle: existing.Title,
+	})
 	return existing, nil
 }
 
 func (s *ScheduleService) Delete(ctx context.Context, id string) error {
-	return s.schedules.Delete(ctx, id)
+	existing, err := s.schedules.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.schedules.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionScheduleDeleted,
+		Actor:         domain.AuditActorAdmin,
+		ScheduleID:    existing.ID,
+		ScheduleTitle: existing.Title,
+	})
+	return nil
 }
 
 func (s *ScheduleService) Duplicate(ctx context.Context, id string, newTitle string) (domain.Schedule, error) {
@@ -246,6 +272,13 @@ func (s *ScheduleService) Duplicate(ctx context.Context, id string, newTitle str
 			return domain.Schedule{}, err
 		}
 	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionScheduleDuplicate,
+		Actor:         domain.AuditActorAdmin,
+		ScheduleID:    created.ID,
+		ScheduleTitle: created.Title,
+		Detail:        source.Title,
+	})
 	return created, nil
 }
 

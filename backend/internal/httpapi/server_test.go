@@ -38,11 +38,13 @@ func newTestEnv(t *testing.T, now time.Time) *testEnv {
 	eventRepo := sqlite.NewEventRepo(store)
 	attendeeRepo := sqlite.NewAttendeeRepo(store)
 	settingsRepo := sqlite.NewSettingsRepo(store)
+	auditRepo := sqlite.NewAuditRepo(store)
 	clock := func() time.Time { return now }
 
-	scheduleSvc := service.NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, clock)
-	eventSvc := service.NewEventService(scheduleRepo, eventRepo)
-	attendeeSvc := service.NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, clock)
+	auditSvc := service.NewAuditService(auditRepo, settingsRepo)
+	scheduleSvc := service.NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, auditSvc, clock)
+	eventSvc := service.NewEventService(scheduleRepo, eventRepo, auditSvc)
+	attendeeSvc := service.NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, auditSvc, clock)
 	settingsSvc := service.NewSettingsService(settingsRepo)
 	transferSvc := service.NewTransferService(scheduleRepo, eventRepo, attendeeRepo, settingsSvc, store, clock)
 	authSvc := service.NewAuthService("test-password", clock)
@@ -54,6 +56,7 @@ func newTestEnv(t *testing.T, now time.Time) *testEnv {
 		Settings:  settingsSvc,
 		Transfer:  transferSvc,
 		Auth:      authSvc,
+		Audit:     auditSvc,
 	}, slog.New(slog.DiscardHandler))
 
 	return &testEnv{t: t, api: api.Handler(), auth: authSvc}

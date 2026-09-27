@@ -11,11 +11,12 @@ type AttendeeService struct {
 	schedules domain.ScheduleRepository
 	events    domain.EventRepository
 	attendees domain.AttendeeRepository
+	audit     *AuditService
 	clock     Clock
 }
 
-func NewAttendeeService(schedules domain.ScheduleRepository, events domain.EventRepository, attendees domain.AttendeeRepository, clock Clock) *AttendeeService {
-	return &AttendeeService{schedules: schedules, events: events, attendees: attendees, clock: clock}
+func NewAttendeeService(schedules domain.ScheduleRepository, events domain.EventRepository, attendees domain.AttendeeRepository, audit *AuditService, clock Clock) *AttendeeService {
+	return &AttendeeService{schedules: schedules, events: events, attendees: attendees, audit: audit, clock: clock}
 }
 
 type AttendResult struct {
@@ -77,6 +78,15 @@ func (s *AttendeeService) Attend(ctx context.Context, scheduleID string, eventID
 		}
 		return AttendResult{}, err
 	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionAttendeeAdded,
+		Actor:         domain.AuditActorPublic,
+		ActorName:     att.Name,
+		ScheduleID:    sched.ID,
+		ScheduleTitle: sched.Title,
+		EventID:       ev.ID,
+		EventName:     ev.Name,
+	})
 	return AttendResult{Attendee: att, Token: token, Created: true}, nil
 }
 
@@ -102,11 +112,27 @@ func (s *AttendeeService) Revert(ctx context.Context, scheduleID string, eventID
 	if subtle.ConstantTimeCompare([]byte(att.ManageToken), []byte(token)) != 1 {
 		return domain.NewError(domain.KindForbidden, "manage token does not match")
 	}
-	return s.attendees.Delete(ctx, att.ID)
+	if err := s.attendees.Delete(ctx, att.ID); err != nil {
+		return err
+	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionAttendeeRemoved,
+		Actor:         domain.AuditActorPublic,
+		ActorName:     att.Name,
+		ScheduleID:    sched.ID,
+		ScheduleTitle: sched.Title,
+		EventID:       ev.ID,
+		EventName:     ev.Name,
+	})
+	return nil
 }
 
 func (s *AttendeeService) AdminAdd(ctx context.Context, eventID string, rawName string) (domain.Attendee, error) {
 	ev, err := s.events.GetByID(ctx, eventID)
+	if err != nil {
+		return domain.Attendee{}, err
+	}
+	sched, err := s.schedules.GetByID(ctx, ev.ScheduleID)
 	if err != nil {
 		return domain.Attendee{}, err
 	}
@@ -138,11 +164,44 @@ func (s *AttendeeService) AdminAdd(ctx context.Context, eventID string, rawName 
 		}
 		return domain.Attendee{}, err
 	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionAttendeeAdded,
+		Actor:         domain.AuditActorAdmin,
+		ActorName:     att.Name,
+		ScheduleID:    sched.ID,
+		ScheduleTitle: sched.Title,
+		EventID:       ev.ID,
+		EventName:     ev.Name,
+	})
 	return att, nil
 }
 
 func (s *AttendeeService) AdminRemove(ctx context.Context, attendeeID string) error {
-	return s.attendees.Delete(ctx, attendeeID)
+	att, err := s.attendees.GetByID(ctx, attendeeID)
+	if err != nil {
+		return err
+	}
+	ev, err := s.events.GetByID(ctx, att.EventID)
+	if err != nil {
+		return err
+	}
+	sched, err := s.schedules.GetByID(ctx, ev.ScheduleID)
+	if err != nil {
+		return err
+	}
+	if err := s.attendees.Delete(ctx, attendeeID); err != nil {
+		return err
+	}
+	s.audit.Record(ctx, AuditInput{
+		Action:        domain.AuditActionAttendeeRemoved,
+		Actor:         domain.AuditActorAdmin,
+		ActorName:     att.Name,
+		ScheduleID:    sched.ID,
+		ScheduleTitle: sched.Title,
+		EventID:       ev.ID,
+		EventName:     ev.Name,
+	})
+	return nil
 }
 
 func (s *AttendeeService) lookupEvent(ctx context.Context, scheduleID, eventID string) (domain.Event, error) {

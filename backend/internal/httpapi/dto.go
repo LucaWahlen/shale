@@ -78,3 +78,23 @@ type importCountsDTO struct {
 	Events    int64 `json:"events"`
 	Attendees int64 `json:"attendees"`
 }
+
+type auditEntryDTO struct {
+	ID            string `json:"id"`
+	CreatedAt     string `json:"created_at"`
+	Action        string `json:"action"`
+	Actor         string `json:"actor"`
+	ActorName     string `json:"actor_name"`
+	ScheduleID    string `json:"schedule_id"`
+	ScheduleTitle string `json:"schedule_title"`
+	EventID       string `json:"event_id"`
+	EventName     string `json:"event_name"`
+	Detail        string `json:"detail"`
+}
+
+type auditPageDTO struct {
+	Items    []auditEntryDTO `json:"items"`
+	Total    int             `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"page_size"`
+}

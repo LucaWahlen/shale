@@ -391,20 +391,22 @@ func (s *Server) handleGetAdminSettings(w http.ResponseWriter, r *http.Request) 
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{
-		"default_language": view.DefaultLanguage,
-		"app_name":         view.AppName,
-		"imprint_text":     view.ImprintText,
-		"privacy_text":     view.PrivacyText,
+	writeJSON(w, http.StatusOK, map[string]any{
+		"default_language":     view.DefaultLanguage,
+		"app_name":             view.AppName,
+		"imprint_text":         view.ImprintText,
+		"privacy_text":         view.PrivacyText,
+		"audit_retention_days": view.AuditRetentionDays,
 	})
 }
 
 func (s *Server) handlePutAdminSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		DefaultLanguage string  `json:"default_language"`
-		AppName         *string `json:"app_name"`
-		ImprintText     *string `json:"imprint_text"`
-		PrivacyText     *string `json:"privacy_text"`
+		DefaultLanguage    string  `json:"default_language"`
+		AppName            *string `json:"app_name"`
+		ImprintText        *string `json:"imprint_text"`
+		PrivacyText        *string `json:"privacy_text"`
+		AuditRetentionDays *int    `json:"audit_retention_days"`
 	}
 	if err := readJSON(w, r, &req); err != nil {
 		writeError(w, err)
@@ -432,16 +434,23 @@ func (s *Server) handlePutAdminSettings(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+	if req.AuditRetentionDays != nil {
+		if err := s.deps.Settings.SetAuditRetentionDays(r.Context(), *req.AuditRetentionDays); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 	view, err := s.deps.Settings.Get(r.Context())
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{
-		"default_language": view.DefaultLanguage,
-		"app_name":         view.AppName,
-		"imprint_text":     view.ImprintText,
-		"privacy_text":     view.PrivacyText,
+	writeJSON(w, http.StatusOK, map[string]any{
+		"default_language":     view.DefaultLanguage,
+		"app_name":             view.AppName,
+		"imprint_text":         view.ImprintText,
+		"privacy_text":         view.PrivacyText,
+		"audit_retention_days": view.AuditRetentionDays,
 	})
 }
 

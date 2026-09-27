@@ -54,6 +54,7 @@
     "nav": {
       "schedules": "Zeitpläne",
       "settings": "Einstellungen",
+      "audit": "Protokoll",
       "logout": "Abmelden"
     },
     "schedules": {
@@ -132,7 +133,35 @@
       "duplicate": "Duplizieren",
       "duplicateDone": "Dupliziert.",
       "eventDeleted": "Termin gelöscht.",
-      "duplicateHint": "Erstellt eine Kopie mit allen Terminen."
+      "duplicateHint": "Erstellt eine Kopie mit allen Terminen.",
+      "history": "Verlauf"
+    },
+    "audit": {
+      "title": "Protokoll",
+      "subtitle": "Wer hat wann was getan.",
+      "searchPlaceholder": "Name, Termin, Zeitplan suchen…",
+      "actionLabel": "Aktion",
+      "scheduleLabel": "Zeitplan",
+      "scheduleAll": "Alle Zeitpläne",
+      "clearSchedule": "Alle anzeigen",
+      "empty": "Noch keine Einträge.",
+      "pagination": "Seitennavigation",
+      "actionAll": "Alle Aktionen",
+      "actions": {
+        "attendeeAdded": "Angemeldet",
+        "attendeeRemoved": "Abgemeldet",
+        "scheduleCreated": "Zeitplan erstellt",
+        "scheduleUpdated": "Zeitplan geändert",
+        "scheduleDeleted": "Zeitplan gelöscht",
+        "scheduleDuplicated": "Zeitplan dupliziert",
+        "eventCreated": "Termin erstellt",
+        "eventUpdated": "Termin geändert",
+        "eventDeleted": "Termin gelöscht"
+      },
+      "actor": {
+        "admin": "Admin",
+        "public": "Teilnehmende:r"
+      }
     },
     "settings": {
       "title": "Einstellungen",
@@ -148,6 +177,10 @@
       "imprintHint": "Wird unter /impressum angezeigt. Leer lassen, um den Link auszublenden.",
       "privacyLabel": "Datenschutzerklärung",
       "privacyHint": "Wird unter /datenschutz angezeigt. Leer lassen, um den Link auszublenden.",
+      "auditTitle": "Protokoll",
+      "auditHint": "Zeichnet An-, Abmeldungen und Änderungen auf.",
+      "retentionLabel": "Aufbewahrung (Tage)",
+      "retentionHint": "Ältere Einträge werden automatisch gelöscht. 0 = unbegrenzt.",
       "dataTitle": "Daten",
       "exportTitle": "Export",
       "exportHint": "Vollständigen App-Zustand als JSON herunterladen (ohne Passwörter und Tokens).",

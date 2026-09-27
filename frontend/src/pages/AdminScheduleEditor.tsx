@@ -273,6 +273,9 @@ export function AdminScheduleEditor() {
           <Button variant="secondary" size="sm" onPress={() => duplicateModal.open()}>
             {t("common.duplicate")}
           </Button>
+          <Link to={`/audit?schedule=${schedule.id}`}>
+            <Button variant="secondary" size="sm">{t("admin.editor.history")}</Button>
+          </Link>
         </div>
       </div>
 

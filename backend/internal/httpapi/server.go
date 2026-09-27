@@ -16,6 +16,7 @@ type Deps struct {
 	Settings  *service.SettingsService
 	Transfer  *service.TransferService
 	Auth      *service.AuthService
+	Audit     *service.AuditService
 }
 
 type Server struct {
@@ -57,6 +58,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PUT /api/v1/admin/settings", s.admin(s.handlePutAdminSettings))
 	mux.Handle("GET /api/v1/admin/export", s.admin(s.handleExport))
 	mux.Handle("POST /api/v1/admin/import", s.admin(s.handleImport))
+	mux.Handle("GET /api/v1/admin/audit", s.admin(s.handleListAudit))
 
 	mux.HandleFunc("/api/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, errNotFoundRoute)

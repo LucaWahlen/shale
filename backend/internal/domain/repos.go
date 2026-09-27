@@ -37,6 +37,12 @@ type SettingsRepository interface {
 	All(ctx context.Context) (map[string]string, error)
 }
 
+type AuditRepository interface {
+	Append(ctx context.Context, e *AuditEntry) error
+	List(ctx context.Context, q AuditListQuery) (AuditPage, error)
+	DeleteBefore(ctx context.Context, cutoff string) (int64, error)
+}
+
 type TransactionManager interface {
 	Do(ctx context.Context, fn func(ctx context.Context) error) error
 }

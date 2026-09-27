@@ -19,6 +19,7 @@ export function AdminSettings() {
   const [language, setLanguage] = useState<AppSettings["default_language"]>("en");
   const [imprintText, setImprintText] = useState("");
   const [privacyText, setPrivacyText] = useState("");
+  const [retentionDays, setRetentionDays] = useState(0);
 
   const { data: settings } = useQuery({
     queryKey: ["admin-settings"],
@@ -31,6 +32,7 @@ export function AdminSettings() {
       setLanguage(settings.default_language);
       setImprintText(settings.imprint_text);
       setPrivacyText(settings.privacy_text);
+      setRetentionDays(settings.audit_retention_days ?? 0);
     }
   }, [settings]);
 
@@ -39,7 +41,8 @@ export function AdminSettings() {
     (appName.trim() !== settings.app_name ||
       language !== settings.default_language ||
       imprintText.trim() !== settings.imprint_text ||
-      privacyText.trim() !== settings.privacy_text);
+      privacyText.trim() !== settings.privacy_text ||
+      retentionDays !== (settings.audit_retention_days ?? 0));
 
   const saveSettings = useMutation({
     mutationFn: () =>
@@ -48,6 +51,7 @@ export function AdminSettings() {
         default_language: language,
         imprint_text: imprintText.trim(),
         privacy_text: privacyText.trim(),
+        audit_retention_days: retentionDays,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
@@ -148,6 +152,38 @@ export function AdminSettings() {
               onChange={(e) => setPrivacyText(e.target.value)}
             />
             <span className="text-xs text-muted">{t("admin.settings.privacyHint")}</span>
+          </label>
+          <div>
+            <Button
+              isDisabled={saveSettings.isPending || !settings || !settingsDirty || appName.trim().length === 0}
+              onPress={() => saveSettings.mutate()}
+            >
+              {t("common.save")}
+            </Button>
+          </div>
+        </Card.Content>
+      </Card>
+
+      <Card>
+        <Card.Content className="gap-4">
+          <div>
+            <h2 className="text-base font-semibold">{t("admin.settings.auditTitle")}</h2>
+            <p className="text-sm text-muted">{t("admin.settings.auditHint")}</p>
+          </div>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">{t("admin.settings.retentionLabel")}</span>
+            <input
+              type="number"
+              name="audit-retention-days"
+              min={0}
+              max={3650}
+              step={1}
+              inputMode="numeric"
+              className="w-40 rounded-lg border border-border bg-surface px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              value={retentionDays}
+              onChange={(e) => setRetentionDays(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
+            />
+            <span className="text-xs text-muted">{t("admin.settings.retentionHint")}</span>
           </label>
           <div>
             <Button

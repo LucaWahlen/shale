@@ -84,6 +84,35 @@ export interface AppSettings {
   default_language: "en" | "de";
   imprint_text: string;
   privacy_text: string;
+  audit_retention_days?: number;
+}
+
+export interface AuditEntry {
+  id: string;
+  created_at: string;
+  action: string;
+  actor: string;
+  actor_name: string;
+  schedule_id: string;
+  schedule_title: string;
+  event_id: string;
+  event_name: string;
+  detail: string;
+}
+
+export interface AuditListParams {
+  page?: number;
+  pageSize?: number;
+  action?: string;
+  scheduleId?: string;
+  q?: string;
+}
+
+export interface AuditPage {
+  items: AuditEntry[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export interface ImportCounts {
@@ -201,6 +230,17 @@ export const api = {
   getAdminSettings: () => request<AppSettings>("GET", "/api/v1/admin/settings"),
   putAdminSettings: (input: AppSettings) =>
     request<AppSettings>("PUT", "/api/v1/admin/settings", input),
+
+  listAudit: (params: AuditListParams = {}) => {
+    const query = new URLSearchParams();
+    if (params.page !== undefined) query.set("page", String(params.page));
+    if (params.pageSize !== undefined) query.set("page_size", String(params.pageSize));
+    if (params.action) query.set("action", params.action);
+    if (params.scheduleId) query.set("schedule_id", params.scheduleId);
+    if (params.q) query.set("q", params.q);
+    const qs = query.toString();
+    return request<AuditPage>("GET", `/api/v1/admin/audit${qs ? `?${qs}` : ""}`);
+  },
 
   exportUrl: "/api/v1/admin/export" as const,
   import: (raw: string) =>

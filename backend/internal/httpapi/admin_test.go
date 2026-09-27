@@ -255,6 +255,73 @@ func TestAdminDuplicateCopiesEventDetails(t *testing.T) {
 	}
 }
 
+func TestAdminAuditLog(t *testing.T) {
+	env := newTestEnv(t, time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC))
+	cookie := env.login()
+
+	sid := env.createSchedule(cookie, "Audit Schedule")
+	ev := env.createEvent(cookie, sid, map[string]any{"name": "Audit Event", "starts_at": "2026-09-20T09:00"})
+	eventID := ev["id"].(string)
+
+	res, _ := env.do(http.MethodPost, "/api/v1/schedules/"+sid+"/events/"+eventID+"/attend", map[string]string{"name": "Alice"}, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("public attend status = %d", res.StatusCode)
+	}
+
+	var page struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
+	}
+	res = env.doInto(http.MethodGet, "/api/v1/admin/audit?schedule_id="+sid, nil, cookie, &page)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("audit list status = %d", res.StatusCode)
+	}
+	actions := map[string]bool{}
+	for _, it := range page.Items {
+		actions[it["action"].(string)] = true
+	}
+	for _, want := range []string{"schedule.created", "event.created", "attendee.added"} {
+		if !actions[want] {
+			t.Errorf("missing audit action %s (got %v)", want, actions)
+		}
+	}
+	found := false
+	for _, it := range page.Items {
+		if it["action"] == "attendee.added" && it["actor_name"] == "Alice" && it["actor"] == "public" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected public attendee.added entry for Alice: %v", page.Items)
+	}
+
+	res, _ = env.do(http.MethodGet, "/api/v1/admin/audit?action=bogus", nil, cookie)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("invalid action filter status = %d, want 400", res.StatusCode)
+	}
+}
+
+func TestAdminAuditRetentionSetting(t *testing.T) {
+	env := newTestEnv(t, time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC))
+	cookie := env.login()
+
+	res, out := env.do(http.MethodPut, "/api/v1/admin/settings", map[string]any{
+		"default_language":     "de",
+		"audit_retention_days": 30,
+	}, cookie)
+	if res.StatusCode != http.StatusOK || out["audit_retention_days"] != float64(30) {
+		t.Fatalf("set retention = %d / %v", res.StatusCode, out["audit_retention_days"])
+	}
+
+	res, _ = env.do(http.MethodPut, "/api/v1/admin/settings", map[string]any{
+		"default_language":     "de",
+		"audit_retention_days": -1,
+	}, cookie)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("negative retention status = %d, want 400", res.StatusCode)
+	}
+}
+
 func TestAdminScheduleCRUD(t *testing.T) {
 	env := newTestEnv(t, time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC))
 	cookie := env.login()

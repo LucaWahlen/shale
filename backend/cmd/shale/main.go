@@ -53,12 +53,15 @@ func run() error {
 	eventRepo := sqlite.NewEventRepo(store)
 	attendeeRepo := sqlite.NewAttendeeRepo(store)
 	settingsRepo := sqlite.NewSettingsRepo(store)
+	auditRepo := sqlite.NewAuditRepo(store)
 
 	clock := func() time.Time { return time.Now() }
 
-	scheduleSvc := service.NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, clock)
-	eventSvc := service.NewEventService(scheduleRepo, eventRepo)
-	attendeeSvc := service.NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, clock)
+	auditSvc := service.NewAuditService(auditRepo, settingsRepo)
+	auditSvc.Prune(ctx)
+	scheduleSvc := service.NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, auditSvc, clock)
+	eventSvc := service.NewEventService(scheduleRepo, eventRepo, auditSvc)
+	attendeeSvc := service.NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, auditSvc, clock)
 	settingsSvc := service.NewSettingsService(settingsRepo)
 	transferSvc := service.NewTransferService(scheduleRepo, eventRepo, attendeeRepo, settingsSvc, store, clock)
 
@@ -69,6 +72,7 @@ func run() error {
 		Settings:  settingsSvc,
 		Transfer:  transferSvc,
 		Auth:      service.NewAuthService(cfg.AdminPassword, clock),
+		Audit:     auditSvc,
 	}, logger)
 
 	spa, err := web.Handler()
