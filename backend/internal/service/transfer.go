@@ -10,7 +10,7 @@ import (
 	"shale/internal/domain"
 )
 
-const ExportSchemaVersion = 2
+const ExportSchemaVersion = 3
 
 type TransferService struct {
 	schedules domain.ScheduleRepository
@@ -48,12 +48,14 @@ type ExportDoc struct {
 }
 
 type ExportSchedule struct {
+	ID          string        `json:"id"`
 	Title       string        `json:"title"`
 	Description string        `json:"description"`
 	Events      []ExportEvent `json:"events"`
 }
 
 type ExportEvent struct {
+	ID          string       `json:"id"`
 	Name        string       `json:"name"`
 	Description string       `json:"description"`
 	Location    string       `json:"location"`
@@ -64,7 +66,9 @@ type ExportEvent struct {
 }
 
 type ExportName struct {
-	Name string `json:"name"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	ManageToken string `json:"manage_token"`
 }
 
 type ImportCounts struct {
@@ -95,6 +99,7 @@ func (s *TransferService) Export(ctx context.Context) (ExportDoc, error) {
 			return ExportDoc{}, err
 		}
 		es := ExportSchedule{
+			ID:          sc.ID,
 			Title:       sc.Title,
 			Description: sc.Description,
 			Events:      make([]ExportEvent, 0, len(events)),
@@ -105,6 +110,7 @@ func (s *TransferService) Export(ctx context.Context) (ExportDoc, error) {
 				return ExportDoc{}, err
 			}
 			ee := ExportEvent{
+				ID:          ev.ID,
 				Name:        ev.Name,
 				Description: ev.Description,
 				Location:    ev.Location,
@@ -114,7 +120,7 @@ func (s *TransferService) Export(ctx context.Context) (ExportDoc, error) {
 				Attendees:   make([]ExportName, 0, len(atts)),
 			}
 			for _, a := range atts {
-				ee.Attendees = append(ee.Attendees, ExportName{Name: a.Name})
+				ee.Attendees = append(ee.Attendees, ExportName{ID: a.ID, Name: a.Name, ManageToken: a.ManageToken})
 			}
 			es.Events = append(es.Events, ee)
 		}
@@ -131,12 +137,14 @@ type importDoc struct {
 }
 
 type importSchedule struct {
+	ID          string        `json:"id"`
 	Title       string        `json:"title"`
 	Description string        `json:"description"`
 	Events      []importEvent `json:"events"`
 }
 
 type importEvent struct {
+	ID          string       `json:"id"`
 	Name        string       `json:"name"`
 	Description string       `json:"description"`
 	Location    string       `json:"location"`
@@ -164,6 +172,7 @@ func (s *TransferService) Import(ctx context.Context, raw []byte) (ImportCounts,
 		}
 		for _, is := range doc.Schedules {
 			sched := domain.Schedule{
+				ID:          is.ID,
 				Title:       strings.TrimSpace(is.Title),
 				Description: is.Description,
 			}
@@ -173,6 +182,7 @@ func (s *TransferService) Import(ctx context.Context, raw []byte) (ImportCounts,
 			counts.Schedules++
 			for _, ie := range is.Events {
 				ev := domain.Event{
+					ID:          ie.ID,
 					ScheduleID:  sched.ID,
 					Name:        ie.Name,
 					Description: ie.Description,
@@ -196,11 +206,16 @@ func (s *TransferService) Import(ctx context.Context, raw []byte) (ImportCounts,
 						continue
 					}
 					seen[normalized] = true
-					token, terr := domain.NewManageToken()
-					if terr != nil {
-						return terr
+					token := ia.ManageToken
+					if token == "" {
+						var terr error
+						token, terr = domain.NewManageToken()
+						if terr != nil {
+							return terr
+						}
 					}
 					att := domain.Attendee{
+						ID:             ia.ID,
 						EventID:        ev.ID,
 						Name:           name,
 						NormalizedName: normalized,
@@ -262,8 +277,21 @@ func parseImportDoc(raw []byte) (importDoc, []domain.Detail, error) {
 		}
 	}
 
+	seenScheduleIDs := map[string]bool{}
+	seenEventIDs := map[string]bool{}
+	seenAttendeeIDs := map[string]bool{}
+	seenTokens := map[string]bool{}
+
 	for i, is := range doc.Schedules {
 		base := fmt.Sprintf("schedules[%d]", i)
+		if is.ID != "" {
+			if !domain.ValidID(is.ID) {
+				details = append(details, domain.Detail{Path: base + ".id", Message: "id must be a valid UUID"})
+			} else if seenScheduleIDs[is.ID] {
+				details = append(details, domain.Detail{Path: base + ".id", Message: "duplicate schedule id"})
+			}
+			seenScheduleIDs[is.ID] = true
+		}
 		if strings.TrimSpace(is.Title) == "" {
 			details = append(details, domain.Detail{Path: base + ".title", Message: "title must not be empty"})
 		}
@@ -275,6 +303,14 @@ func parseImportDoc(raw []byte) (importDoc, []domain.Detail, error) {
 		}
 		for j, ie := range is.Events {
 			ebase := fmt.Sprintf("%s.events[%d]", base, j)
+			if ie.ID != "" {
+				if !domain.ValidID(ie.ID) {
+					details = append(details, domain.Detail{Path: ebase + ".id", Message: "id must be a valid UUID"})
+				} else if seenEventIDs[ie.ID] {
+					details = append(details, domain.Detail{Path: ebase + ".id", Message: "duplicate event id"})
+				}
+				seenEventIDs[ie.ID] = true
+			}
 			if strings.TrimSpace(ie.Name) == "" {
 				details = append(details, domain.Detail{Path: ebase + ".name", Message: "name must not be empty"})
 			}
@@ -299,6 +335,22 @@ func parseImportDoc(raw []byte) (importDoc, []domain.Detail, error) {
 				if runeLen(trimmed) > domain.MaxNameRunes {
 					details = append(details, domain.Detail{Path: abase + ".name", Message: fmt.Sprintf("name must be at most %d characters", domain.MaxNameRunes)})
 					continue
+				}
+				if ia.ID != "" {
+					if !domain.ValidID(ia.ID) {
+						details = append(details, domain.Detail{Path: abase + ".id", Message: "id must be a valid UUID"})
+					} else if seenAttendeeIDs[ia.ID] {
+						details = append(details, domain.Detail{Path: abase + ".id", Message: "duplicate attendee id"})
+					}
+					seenAttendeeIDs[ia.ID] = true
+				}
+				if ia.ManageToken != "" {
+					if !domain.ValidManageToken(ia.ManageToken) {
+						details = append(details, domain.Detail{Path: abase + ".manage_token", Message: "manage_token must be 32 hex characters"})
+					} else if seenTokens[ia.ManageToken] {
+						details = append(details, domain.Detail{Path: abase + ".manage_token", Message: "duplicate manage_token"})
+					}
+					seenTokens[ia.ManageToken] = true
 				}
 				norm := domain.NormalizeName(trimmed)
 				if seenNames[norm] {

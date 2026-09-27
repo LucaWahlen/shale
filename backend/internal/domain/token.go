@@ -12,3 +12,13 @@ func NewManageToken() (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+const ManageTokenLength = 32
+
+func ValidManageToken(token string) bool {
+	if len(token) != ManageTokenLength {
+		return false
+	}
+	_, err := hex.DecodeString(token)
+	return err == nil
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -91,8 +92,8 @@ func TestExportImportRoundTrip(t *testing.T) {
 		t.Fatalf("marshal export: %v", err)
 	}
 
-	if strings.Contains(string(raw), "manage_token") {
-		t.Error("export contains manage_token key")
+	if !strings.Contains(string(raw), "manage_token") {
+		t.Error("export missing manage_token: attendee links would not survive migration")
 	}
 
 	fresh := newTransferEnv(t)
@@ -104,17 +105,17 @@ func TestExportImportRoundTrip(t *testing.T) {
 		t.Errorf("counts = %+v, want 1/2/2", counts)
 	}
 
+	freshDoc, err := fresh.transfer.Export(ctx)
+	if err != nil {
+		t.Fatalf("re-Export: %v", err)
+	}
+	if !reflect.DeepEqual(freshDoc.Schedules, doc.Schedules) {
+		t.Errorf("re-export mismatch:\n got %+v\nwant %+v", freshDoc.Schedules, doc.Schedules)
+	}
+
 	ps, err := fresh.schedules.GetPublic(ctx, scheduleID)
 	if err != nil {
-
-		list, lerr := fresh.schedules.List(ctx)
-		if lerr != nil || len(list) != 1 {
-			t.Fatalf("list after import: %v", lerr)
-		}
-		ps, err = fresh.schedules.GetPublic(ctx, list[0].ID)
-		if err != nil {
-			t.Fatalf("GetPublic after import: %v", err)
-		}
+		t.Fatalf("GetPublic with original id after import: %v", err)
 	}
 	if ps.Schedule.Title != "Training week 42" || len(ps.Events) != 2 {
 		t.Fatalf("unexpected schedule: %+v", ps)
