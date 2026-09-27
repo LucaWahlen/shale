@@ -7,7 +7,10 @@ import (
 	"shale/internal/domain"
 )
 
-const MaxAppNameRunes = 50
+const (
+	MaxAppNameRunes   = 50
+	MaxLegalTextRunes = 20000
+)
 
 type SettingsService struct {
 	settings domain.SettingsRepository
@@ -20,6 +23,8 @@ func NewSettingsService(settings domain.SettingsRepository) *SettingsService {
 type SettingsView struct {
 	AppName         string
 	DefaultLanguage string
+	ImprintText     string
+	PrivacyText     string
 }
 
 func (s *SettingsService) Get(ctx context.Context) (SettingsView, error) {
@@ -33,7 +38,22 @@ func (s *SettingsService) Get(ctx context.Context) (SettingsView, error) {
 	if err == nil && ValidAppName(v) {
 		name = v
 	}
-	return SettingsView{AppName: name, DefaultLanguage: lang}, nil
+	imprint := s.getText(ctx, domain.SettingImprintText)
+	privacy := s.getText(ctx, domain.SettingPrivacyText)
+	return SettingsView{
+		AppName:         name,
+		DefaultLanguage: lang,
+		ImprintText:     imprint,
+		PrivacyText:     privacy,
+	}, nil
+}
+
+func (s *SettingsService) getText(ctx context.Context, key string) string {
+	v, err := s.settings.Get(ctx, key)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(v)
 }
 
 func (s *SettingsService) SetDefaultLanguage(ctx context.Context, lang string) error {
@@ -57,6 +77,22 @@ func (s *SettingsService) SetAppName(ctx context.Context, name string) error {
 func ValidAppName(name string) bool {
 	trimmed := strings.TrimSpace(name)
 	return trimmed != "" && runeLen(trimmed) <= MaxAppNameRunes
+}
+
+func (s *SettingsService) SetImprintText(ctx context.Context, text string) error {
+	return s.setText(ctx, domain.SettingImprintText, text)
+}
+
+func (s *SettingsService) SetPrivacyText(ctx context.Context, text string) error {
+	return s.setText(ctx, domain.SettingPrivacyText, text)
+}
+
+func (s *SettingsService) setText(ctx context.Context, key, text string) error {
+	trimmed := strings.TrimSpace(text)
+	if runeLen(trimmed) > MaxLegalTextRunes {
+		return domain.Errorf(domain.KindInvalid, "%s must be at most %d characters", key, MaxLegalTextRunes)
+	}
+	return s.settings.Set(ctx, key, trimmed)
 }
 
 func (s *SettingsService) All(ctx context.Context) (map[string]string, error) {

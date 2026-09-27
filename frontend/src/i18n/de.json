@@ -14,7 +14,9 @@
     "optional": "optional",
     "back": "Zurück",
     "duplicate": "Duplizieren",
-    "remove": "Entfernen"
+    "remove": "Entfernen",
+    "imprint": "Impressum",
+    "privacy": "Datenschutz"
   },
   "schedule": {
     "notFound": "Link nicht gefunden",
@@ -75,6 +77,28 @@
       "when_one": "{{first}}",
       "when_range": "{{first}} – {{last}}",
       "noDates": "Noch keine Termine",
+      "searchPlaceholder": "Zeitpläne durchsuchen…",
+      "sortLabel": "Sortieren nach",
+      "sortNewest": "Neueste zuerst",
+      "sortOldest": "Älteste zuerst",
+      "sortUpdated": "Zuletzt aktualisiert",
+      "sortSoonest": "Nächster Termin",
+      "sortEvents": "Meiste Termine",
+      "sortTitleAsc": "Titel A–Z",
+      "sortTitleDesc": "Titel Z–A",
+      "history": "Verlauf",
+      "showPast": "Vergangene anzeigen",
+      "showing": "{{from}}–{{to}} von {{total}}",
+      "pageOf": "Seite {{page}} von {{pages}}",
+      "prevPage": "Zurück",
+      "nextPage": "Weiter",
+      "pagination": "Seitennavigation",
+      "noResultsTitle": "Keine Treffer",
+      "noResults": "Keine Zeitpläne passen zu „{{query}}“.",
+      "clearSearch": "Suche löschen",
+      "emptyUpcomingTitle": "Keine bevorstehenden Zeitpläne",
+      "emptyUpcoming": "Alle Zeitpläne liegen in der Vergangenheit. Zeige vergangene an oder erstelle einen neuen.",
+      "pastBadge": "Vergangen",
       "deleted": "Zeitplan gelöscht.",
       "duplicateTitle": "Zeitplan duplizieren",
       "duplicateHint": "Erstellt eine Kopie mit allen Terminen. Anmeldungen werden nicht kopiert."
@@ -118,6 +142,12 @@
       "appNameHint": "Wird im Kopfbereich und im Browser-Tab angezeigt.",
       "languageTitle": "Standardsprache",
       "languageHint": "Wird verwendet, wenn Besucher:innen keine Sprache gewählt haben.",
+      "legalTitle": "Impressum & Datenschutz",
+      "legalHint": "Optional. Reiner Text, angezeigt unter /impressum und /datenschutz. Leer lassen, um den Footer-Link auszublenden.",
+      "imprintLabel": "Impressum",
+      "imprintHint": "Wird unter /impressum angezeigt. Leer lassen, um den Link auszublenden.",
+      "privacyLabel": "Datenschutzerklärung",
+      "privacyHint": "Wird unter /datenschutz angezeigt. Leer lassen, um den Link auszublenden.",
       "dataTitle": "Daten",
       "exportTitle": "Export",
       "exportHint": "Vollständigen App-Zustand als JSON herunterladen (ohne Passwörter und Tokens).",
@@ -132,6 +162,9 @@
       "chooseFile": "JSON-Datei wählen",
       "logout": "Abmelden"
     }
+  },
+  "legal": {
+    "notConfigured": "Diese Seite wurde noch nicht eingerichtet."
   },
   "errors": {
     "network": "Netzwerkfehler — ist der Server erreichbar?",

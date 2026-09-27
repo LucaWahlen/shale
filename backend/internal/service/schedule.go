@@ -31,6 +31,12 @@ type EventDetail struct {
 type ScheduleDetail struct {
 	Schedule domain.Schedule
 	Events   []EventDetail
+	IsPast   bool
+}
+
+type SchedulePageDetail struct {
+	Items []ScheduleDetail
+	Total int
 }
 
 type PublicAttendee struct {
@@ -77,13 +83,17 @@ func (s *ScheduleService) List(ctx context.Context) ([]domain.ScheduleWithCount,
 	return s.schedules.List(ctx)
 }
 
-func (s *ScheduleService) ListDetailed(ctx context.Context) ([]ScheduleDetail, error) {
-	list, err := s.schedules.List(ctx)
+func (s *ScheduleService) ListDetailed(ctx context.Context, q domain.ScheduleListQuery) (SchedulePageDetail, error) {
+	q.Now = s.clock().Format(domain.StartsAtFormat)
+	page, err := s.schedules.ListPage(ctx, q)
 	if err != nil {
-		return nil, err
+		return SchedulePageDetail{}, err
 	}
-	out := make([]ScheduleDetail, 0, len(list))
-	for _, sc := range list {
+	out := SchedulePageDetail{
+		Items: make([]ScheduleDetail, 0, len(page.Items)),
+		Total: page.Total,
+	}
+	for _, sc := range page.Items {
 		sched := domain.Schedule{
 			ID:          sc.ID,
 			Title:       sc.Title,
@@ -93,11 +103,36 @@ func (s *ScheduleService) ListDetailed(ctx context.Context) ([]ScheduleDetail, e
 		}
 		detail, err := s.assemble(ctx, sched)
 		if err != nil {
-			return nil, err
+			return SchedulePageDetail{}, err
 		}
-		out = append(out, detail)
+		detail.IsPast = scheduleIsPast(detail.Events, q.Now)
+		out.Items = append(out.Items, detail)
 	}
 	return out, nil
+}
+
+func scheduleIsPast(events []EventDetail, now string) bool {
+	if len(events) == 0 {
+		return false
+	}
+	lastEnd := ""
+	for _, ed := range events {
+		end := eventEndAt(ed.Event)
+		if end > lastEnd {
+			lastEnd = end
+		}
+	}
+	return lastEnd != "" && lastEnd < now
+}
+
+func eventEndAt(e domain.Event) string {
+	if e.EndsAt != "" {
+		return e.EndsAt
+	}
+	if e.AllDay && len(e.StartsAt) >= 10 {
+		return e.StartsAt[:10] + "T23:59"
+	}
+	return e.StartsAt
 }
 
 func (s *ScheduleService) Get(ctx context.Context, id string) (ScheduleDetail, error) {

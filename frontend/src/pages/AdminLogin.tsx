@@ -1,16 +1,14 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Button, Card, toast } from "@heroui/react";
 
 import { api, ApiError } from "../api/client";
-import { HeaderControls } from "../components/HeaderControls";
-import { useAppName } from "../lib/useAppName";
+import { AppHeader } from "../components/AppHeader";
 
 export function AdminLogin() {
   const { t } = useTranslation();
-  const appName = useAppName();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [password, setPassword] = useState("");
@@ -32,12 +30,7 @@ export function AdminLogin() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border/60 px-4 py-3 sm:px-6">
-        <Link to="/" className="text-lg font-semibold tracking-tight focus-visible:ring-2 focus-visible:ring-accent">
-          {appName}
-        </Link>
-        <HeaderControls />
-      </header>
+      <AppHeader />
       <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-4 py-12">
         <Card>
           <Card.Content className="gap-4 p-6">

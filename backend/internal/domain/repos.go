@@ -4,6 +4,7 @@ import "context"
 
 type ScheduleRepository interface {
 	List(ctx context.Context) ([]ScheduleWithCount, error)
+	ListPage(ctx context.Context, q ScheduleListQuery) (SchedulePage, error)
 	GetByID(ctx context.Context, id string) (Schedule, error)
 	Create(ctx context.Context, s *Schedule) error
 	Update(ctx context.Context, s *Schedule) error

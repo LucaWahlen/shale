@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"shale/internal/domain"
@@ -50,22 +52,82 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
-	details, err := s.deps.Schedules.ListDetailed(r.Context())
+	q, err := parseScheduleListQuery(r)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	out := make([]adminScheduleDTO, 0, len(details))
-	for _, detail := range details {
+	page, err := s.deps.Schedules.ListDetailed(r.Context(), q)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	items := make([]adminScheduleDTO, 0, len(page.Items))
+	for _, detail := range page.Items {
 		dto := toAdminScheduleDTO(detail)
 		dto.EventCount = len(detail.Events)
 		if len(detail.Events) > 0 {
 			dto.FirstStartsAt = detail.Events[0].Event.StartsAt
 			dto.LastStartsAt = detail.Events[len(detail.Events)-1].Event.StartsAt
 		}
-		out = append(out, dto)
+		items = append(items, dto)
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, adminSchedulePageDTO{
+		Items:    items,
+		Total:    page.Total,
+		Page:     q.Page,
+		PageSize: q.PageSize,
+	})
+}
+
+const (
+	defaultSchedulePageSize = 10
+	maxSchedulePageSize     = 100
+)
+
+var validScheduleSorts = map[string]struct{}{
+	"newest":     {},
+	"oldest":     {},
+	"title":      {},
+	"title_desc": {},
+	"updated":    {},
+	"soonest":    {},
+	"events":     {},
+}
+
+func parseScheduleListQuery(r *http.Request) (domain.ScheduleListQuery, error) {
+	query := r.URL.Query()
+	q := domain.ScheduleListQuery{
+		Search:   strings.TrimSpace(query.Get("q")),
+		Sort:     query.Get("sort"),
+		Page:     1,
+		PageSize: defaultSchedulePageSize,
+	}
+	if q.Sort == "" {
+		q.Sort = "newest"
+	}
+	if _, ok := validScheduleSorts[q.Sort]; !ok {
+		return q, domain.NewError(domain.KindInvalid, "invalid sort value")
+	}
+	if v := query.Get("page"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return q, domain.NewError(domain.KindInvalid, "page must be a positive integer")
+		}
+		q.Page = n
+	}
+	if v := query.Get("page_size"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > maxSchedulePageSize {
+			return q, domain.Errorf(domain.KindInvalid, "page_size must be between 1 and %d", maxSchedulePageSize)
+		}
+		q.PageSize = n
+	}
+	switch query.Get("include_past") {
+	case "1", "true":
+		q.IncludePast = true
+	}
+	return q, nil
 }
 
 func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
@@ -332,6 +394,8 @@ func (s *Server) handleGetAdminSettings(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"default_language": view.DefaultLanguage,
 		"app_name":         view.AppName,
+		"imprint_text":     view.ImprintText,
+		"privacy_text":     view.PrivacyText,
 	})
 }
 
@@ -339,6 +403,8 @@ func (s *Server) handlePutAdminSettings(w http.ResponseWriter, r *http.Request) 
 	var req struct {
 		DefaultLanguage string  `json:"default_language"`
 		AppName         *string `json:"app_name"`
+		ImprintText     *string `json:"imprint_text"`
+		PrivacyText     *string `json:"privacy_text"`
 	}
 	if err := readJSON(w, r, &req); err != nil {
 		writeError(w, err)
@@ -354,6 +420,18 @@ func (s *Server) handlePutAdminSettings(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+	if req.ImprintText != nil {
+		if err := s.deps.Settings.SetImprintText(r.Context(), *req.ImprintText); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if req.PrivacyText != nil {
+		if err := s.deps.Settings.SetPrivacyText(r.Context(), *req.PrivacyText); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 	view, err := s.deps.Settings.Get(r.Context())
 	if err != nil {
 		writeError(w, err)
@@ -362,6 +440,8 @@ func (s *Server) handlePutAdminSettings(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"default_language": view.DefaultLanguage,
 		"app_name":         view.AppName,
+		"imprint_text":     view.ImprintText,
+		"privacy_text":     view.PrivacyText,
 	})
 }
 

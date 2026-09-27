@@ -1,12 +1,12 @@
 import { useEffect } from "react";
-import { Link, Outlet, useNavigate } from "react-router";
+import { Outlet, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 
 import { api, ApiError } from "../api/client";
-import { HeaderControls } from "../components/HeaderControls";
-import { useAppName } from "../lib/useAppName";
+import { AppHeader } from "../components/AppHeader";
+import { SiteFooter } from "../components/SiteFooter";
 
 function SettingsIcon() {
   return (
@@ -19,7 +19,6 @@ function SettingsIcon() {
 
 export function AdminLayout() {
   const { t } = useTranslation();
-  const appName = useAppName();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -45,13 +44,9 @@ export function AdminLayout() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-10 transform-gpu border-b border-border/60 bg-background/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-            <Link to="/" className="text-lg font-semibold tracking-tight">
-              {appName}
-            </Link>
-          <div className="flex items-center gap-1.5">
-            <HeaderControls />
+      <AppHeader
+        actions={
+          <>
             <Button
               variant="ghost"
               size="sm"
@@ -63,12 +58,13 @@ export function AdminLayout() {
             <Button variant="ghost" size="sm" onPress={() => logout.mutate()}>
               {t("admin.nav.logout")}
             </Button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
         <Outlet />
       </main>
+      <SiteFooter />
     </div>
   );
 }

@@ -56,9 +56,17 @@ type adminScheduleDTO struct {
 	EventCount    int             `json:"event_count"`
 	FirstStartsAt string          `json:"first_starts_at,omitempty"`
 	LastStartsAt  string          `json:"last_starts_at,omitempty"`
+	IsPast        bool            `json:"is_past"`
 	Events        []adminEventDTO `json:"events"`
 	CreatedAt     string          `json:"created_at"`
 	UpdatedAt     string          `json:"updated_at"`
+}
+
+type adminSchedulePageDTO struct {
+	Items    []adminScheduleDTO `json:"items"`
+	Total    int                `json:"total"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"page_size"`
 }
 
 type importResponseDTO struct {

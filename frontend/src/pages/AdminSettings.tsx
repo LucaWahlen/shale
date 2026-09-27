@@ -17,6 +17,8 @@ export function AdminSettings() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [appName, setAppName] = useState("");
   const [language, setLanguage] = useState<AppSettings["default_language"]>("en");
+  const [imprintText, setImprintText] = useState("");
+  const [privacyText, setPrivacyText] = useState("");
 
   const { data: settings } = useQuery({
     queryKey: ["admin-settings"],
@@ -27,15 +29,26 @@ export function AdminSettings() {
     if (settings) {
       setAppName(settings.app_name);
       setLanguage(settings.default_language);
+      setImprintText(settings.imprint_text);
+      setPrivacyText(settings.privacy_text);
     }
   }, [settings]);
 
   const settingsDirty =
     settings !== undefined &&
-    (appName.trim() !== settings.app_name || language !== settings.default_language);
+    (appName.trim() !== settings.app_name ||
+      language !== settings.default_language ||
+      imprintText.trim() !== settings.imprint_text ||
+      privacyText.trim() !== settings.privacy_text);
 
   const saveSettings = useMutation({
-    mutationFn: () => api.putAdminSettings({ app_name: appName.trim(), default_language: language }),
+    mutationFn: () =>
+      api.putAdminSettings({
+        app_name: appName.trim(),
+        default_language: language,
+        imprint_text: imprintText.trim(),
+        privacy_text: privacyText.trim(),
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
       void queryClient.invalidateQueries({ queryKey: ["public-settings"] });
@@ -107,6 +120,35 @@ export function AdminSettings() {
               </Radio>
             ))}
           </RadioGroup>
+        </Card.Content>
+      </Card>
+
+      <Card>
+        <Card.Content className="gap-4">
+          <div>
+            <h2 className="text-base font-semibold">{t("admin.settings.legalTitle")}</h2>
+            <p className="text-sm text-muted">{t("admin.settings.legalHint")}</p>
+          </div>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">{t("admin.settings.imprintLabel")}</span>
+            <textarea
+              name="imprint-text"
+              className="min-h-32 w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              value={imprintText}
+              onChange={(e) => setImprintText(e.target.value)}
+            />
+            <span className="text-xs text-muted">{t("admin.settings.imprintHint")}</span>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">{t("admin.settings.privacyLabel")}</span>
+            <textarea
+              name="privacy-text"
+              className="min-h-32 w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              value={privacyText}
+              onChange={(e) => setPrivacyText(e.target.value)}
+            />
+            <span className="text-xs text-muted">{t("admin.settings.privacyHint")}</span>
+          </label>
           <div>
             <Button
               isDisabled={saveSettings.isPending || !settings || !settingsDirty || appName.trim().length === 0}

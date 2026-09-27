@@ -19,6 +19,8 @@ func (s *Server) handlePublicSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"default_language": view.DefaultLanguage,
 		"app_name":         view.AppName,
+		"imprint_text":     view.ImprintText,
+		"privacy_text":     view.PrivacyText,
 	})
 }
 
@@ -120,6 +122,7 @@ func toAdminScheduleDTO(sc service.ScheduleDetail) adminScheduleDTO {
 		ID:          sc.Schedule.ID,
 		Title:       sc.Schedule.Title,
 		Description: sc.Schedule.Description,
+		IsPast:      sc.IsPast,
 		CreatedAt:   sc.Schedule.CreatedAt.UTC().Format(rfc3339),
 		UpdatedAt:   sc.Schedule.UpdatedAt.UTC().Format(rfc3339),
 		Events:      make([]adminEventDTO, 0, len(sc.Events)),

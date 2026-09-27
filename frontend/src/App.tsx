@@ -11,6 +11,7 @@ import { AdminScheduleEditor } from "./pages/AdminScheduleEditor";
 import { AdminSettings } from "./pages/AdminSettings";
 import { SchedulePage } from "./pages/SchedulePage";
 import { AdminLogin } from "./pages/AdminLogin";
+import { ImpressumPage, PrivacyPage } from "./pages/LegalPage";
 
 export default function App() {
   const { i18n } = useTranslation();
@@ -43,6 +44,8 @@ export default function App() {
             <Route path="settings" element={<AdminSettings />} />
           </Route>
         <Route path="/s/:id" element={<SchedulePage />} />
+        <Route path="/impressum" element={<ImpressumPage />} />
+        <Route path="/datenschutz" element={<PrivacyPage />} />
         <Route path="/login" element={<AdminLogin />} />
         <Route path="/admin/login" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<AdminLayout />}>

@@ -1,13 +1,25 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Card, Dropdown, Modal, toast, useOverlayState } from "@heroui/react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Card, Chip, Dropdown, Modal, toast, useOverlayState } from "@heroui/react";
 
 import { api } from "../api/client";
-import type { AdminSchedule } from "../api/client";
+import type { AdminSchedule, ScheduleListParams, ScheduleSort } from "../api/client";
 import { apiErrorMessage } from "../lib/errors";
 import { formatDateTime, formatTimeSpan, intlLocale } from "../lib/datetime";
+
+const PAGE_SIZE = 10;
+
+const SORT_OPTIONS: { value: ScheduleSort; labelKey: string }[] = [
+  { value: "newest", labelKey: "admin.schedules.sortNewest" },
+  { value: "oldest", labelKey: "admin.schedules.sortOldest" },
+  { value: "updated", labelKey: "admin.schedules.sortUpdated" },
+  { value: "soonest", labelKey: "admin.schedules.sortSoonest" },
+  { value: "events", labelKey: "admin.schedules.sortEvents" },
+  { value: "title", labelKey: "admin.schedules.sortTitleAsc" },
+  { value: "title_desc", labelKey: "admin.schedules.sortTitleDesc" },
+];
 
 function DotsIcon() {
   return (
@@ -15,6 +27,24 @@ function DotsIcon() {
       <circle cx="5" cy="12" r="1.8" />
       <circle cx="12" cy="12" r="1.8" />
       <circle cx="19" cy="12" r="1.8" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function HistoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4" aria-hidden="true">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l4 2" />
     </svg>
   );
 }
@@ -50,9 +80,58 @@ export function AdminSchedules() {
   const [description, setDescription] = useState("");
   const [target, setTarget] = useState<AdminSchedule | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["admin-schedules"],
-    queryFn: api.listSchedules,
+  const [searchParams, setSearchParams] = useSearchParams();
+  const q = searchParams.get("q") ?? "";
+  const sortParam = searchParams.get("sort");
+  const sort: ScheduleSort = SORT_OPTIONS.some((o) => o.value === sortParam)
+    ? (sortParam as ScheduleSort)
+    : "newest";
+  const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "1", 10) || 1);
+  const includePast = searchParams.get("history") === "1";
+
+  const [searchInput, setSearchInput] = useState(q);
+
+  const updateParams = (next: Record<string, string | undefined>) => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        for (const [key, value] of Object.entries(next)) {
+          if (value === undefined || value === "") params.delete(key);
+          else params.set(key, value);
+        }
+        return params;
+      },
+      { replace: true },
+    );
+  };
+
+  useEffect(() => {
+    setSearchInput(q);
+  }, [q]);
+
+  useEffect(() => {
+    if (searchInput === q) return;
+    const id = window.setTimeout(() => {
+      updateParams({ q: searchInput || undefined, page: undefined });
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [searchInput, q]);
+
+  const params = useMemo<ScheduleListParams>(
+    () => ({
+      page,
+      pageSize: PAGE_SIZE,
+      sort,
+      q: q.trim() || undefined,
+      includePast,
+    }),
+    [page, sort, q, includePast],
+  );
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ["admin-schedules", params],
+    queryFn: () => api.listSchedules(params),
+    placeholderData: keepPreviousData,
   });
 
   const resetForm = () => {
@@ -83,36 +162,137 @@ export function AdminSchedules() {
     onError: () => toast.danger(t("errors.unexpected")),
   });
 
+  const total = data?.total ?? 0;
+  const pageSize = data?.page_size ?? PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const hasQuery = q.trim().length > 0;
+  const items = data?.items ?? [];
+  const currentSort = SORT_OPTIONS.find((o) => o.value === sort) ?? SORT_OPTIONS[0];
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold">{t("admin.schedules.title")}</h1>
-          {data && data.length > 0 ? (
+          {data && total > 0 ? (
             <p className="text-sm text-muted" aria-live="polite">
-              {t("admin.schedules.count", { count: data.length })}
+              {total <= pageSize && page === 1
+                ? t("admin.schedules.count", { count: total })
+                : t("admin.schedules.showing", {
+                    from: (page - 1) * pageSize + 1,
+                    to: (page - 1) * pageSize + items.length,
+                    total,
+                  })}
             </p>
           ) : null}
         </div>
         <Button onPress={() => { resetForm(); createModal.open(); }}>{t("admin.schedules.create")}</Button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          name="schedule-search"
+          autoComplete="off"
+          className="min-w-40 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          placeholder={t("admin.schedules.searchPlaceholder")}
+          aria-label={t("admin.schedules.searchPlaceholder")}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
+        <Dropdown>
+          <Dropdown.Trigger
+            aria-label={t("admin.schedules.sortLabel")}
+            style={{ display: "inline-flex", transform: "none" }}
+            className="items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground transition-colors hover:bg-surface-secondary"
+          >
+            <span className="text-muted">{t("admin.schedules.sortLabel")}</span>
+            <span className="font-medium">{t(currentSort.labelKey)}</span>
+            <ChevronDownIcon />
+          </Dropdown.Trigger>
+          <Dropdown.Popover placement="bottom end">
+            <Dropdown.Menu
+              onAction={(key) =>
+                updateParams({
+                  sort: String(key) === "newest" ? undefined : String(key),
+                  page: undefined,
+                })
+              }
+            >
+              {SORT_OPTIONS.map((o) => (
+                <Dropdown.Item id={o.value} key={o.value}>
+                  {t(o.labelKey)}
+                </Dropdown.Item>
+              ))}
+            </Dropdown.Menu>
+          </Dropdown.Popover>
+        </Dropdown>
+        <Button
+          size="sm"
+          isIconOnly
+          variant={includePast ? "primary" : "secondary"}
+          aria-label={t("admin.schedules.history")}
+          aria-pressed={includePast}
+          onPress={() =>
+            updateParams({ history: includePast ? undefined : "1", page: undefined })
+          }
+        >
+          <HistoryIcon />
+        </Button>
+      </div>
+
       {isLoading ? <p className="text-muted">{t("common.loading")}</p> : null}
 
-      {data && data.length === 0 ? (
+      {data && total === 0 ? (
         <Card>
           <Card.Content className="flex flex-col items-center gap-3 py-12 text-center">
-            <p className="font-medium">{t("admin.schedules.emptyTitle")}</p>
-            <p className="max-w-sm text-sm text-muted">{t("admin.schedules.empty")}</p>
-            <Button variant="secondary" onPress={() => { resetForm(); createModal.open(); }}>
-              {t("admin.schedules.create")}
-            </Button>
+            {hasQuery ? (
+              <>
+                <p className="font-medium">{t("admin.schedules.noResultsTitle")}</p>
+                <p className="max-w-sm text-sm text-muted">
+                  {t("admin.schedules.noResults", { query: q })}
+                </p>
+                <Button
+                  variant="secondary"
+                  onPress={() => {
+                    setSearchInput("");
+                    updateParams({ q: undefined, page: undefined });
+                  }}
+                >
+                  {t("admin.schedules.clearSearch")}
+                </Button>
+              </>
+            ) : !includePast ? (
+              <>
+                <p className="font-medium">{t("admin.schedules.emptyUpcomingTitle")}</p>
+                <p className="max-w-sm text-sm text-muted">{t("admin.schedules.emptyUpcoming")}</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button
+                    variant="secondary"
+                    onPress={() => updateParams({ history: "1", page: undefined })}
+                  >
+                    {t("admin.schedules.showPast")}
+                  </Button>
+                  <Button onPress={() => { resetForm(); createModal.open(); }}>
+                    {t("admin.schedules.create")}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">{t("admin.schedules.emptyTitle")}</p>
+                <p className="max-w-sm text-sm text-muted">{t("admin.schedules.empty")}</p>
+                <Button variant="secondary" onPress={() => { resetForm(); createModal.open(); }}>
+                  {t("admin.schedules.create")}
+                </Button>
+              </>
+            )}
           </Card.Content>
         </Card>
       ) : null}
 
       <div className="flex flex-col gap-3">
-        {data?.map((s) => {
+        {items.map((s) => {
           const events = s.events ?? [];
           const attendeeTotal = events.reduce((n, ev) => n + ev.attendees.length, 0);
           const range = whenRange(s, i18n.language);
@@ -126,16 +306,23 @@ export function AdminSchedules() {
             }
           };
           return (
-            <Card key={s.id}>
+            <Card key={s.id} className={s.is_past ? "opacity-75" : undefined}>
               <Card.Content className="gap-2.5">
                 <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                   <div className="min-w-0 flex-1">
-                    <Link
-                      to={`/s/${s.id}`}
-                      className="text-base font-semibold focus-visible:ring-2 focus-visible:ring-accent"
-                    >
-                      {s.title}
-                    </Link>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Link
+                        to={`/s/${s.id}`}
+                        className="min-w-0 truncate text-base font-semibold focus-visible:ring-2 focus-visible:ring-accent"
+                      >
+                        {s.title}
+                      </Link>
+                      {s.is_past ? (
+                        <Chip variant="soft" size="sm">
+                          {t("admin.schedules.pastBadge")}
+                        </Chip>
+                      ) : null}
+                    </div>
                     {s.description ? (
                       <p className="mt-0.5 whitespace-pre-line text-sm text-muted">{s.description}</p>
                     ) : null}
@@ -221,6 +408,30 @@ export function AdminSchedules() {
           );
         })}
       </div>
+
+      {data && totalPages > 1 ? (
+        <nav className="flex items-center justify-between gap-2" aria-label={t("admin.schedules.pagination")}>
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={page <= 1 || isFetching}
+            onPress={() => updateParams({ page: String(page - 1) })}
+          >
+            {t("admin.schedules.prevPage")}
+          </Button>
+          <span className="text-sm text-muted" aria-live="polite">
+            {t("admin.schedules.pageOf", { page, pages: totalPages })}
+          </span>
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={page >= totalPages || isFetching}
+            onPress={() => updateParams({ page: String(page + 1) })}
+          >
+            {t("admin.schedules.nextPage")}
+          </Button>
+        </nav>
+      ) : null}
 
       <Modal.Backdrop isOpen={createModal.isOpen} onOpenChange={createModal.setOpen}>
         <Modal.Container size="sm">

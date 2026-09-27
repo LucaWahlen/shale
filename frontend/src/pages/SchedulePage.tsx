@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Card, Chip, Modal, toast, useOverlayState } from "@heroui/react";
 
 import { api, ApiError } from "../api/client";
-import { HeaderControls } from "../components/HeaderControls";
+import { AppHeader } from "../components/AppHeader";
+import { SiteFooter } from "../components/SiteFooter";
 import { apiErrorMessage } from "../lib/errors";
 import { formatDate, formatTimeSpan, splitStartsAt } from "../lib/datetime";
-import { useAppName } from "../lib/useAppName";
 import {
   getAttendanceEntry,
   getProfileName,
@@ -254,7 +254,6 @@ export function SchedulePage() {
   const { id = "" } = useParams();
   const scheduleID = id;
   const { t, i18n } = useTranslation();
-  const appName = useAppName();
   const { data, isError, error } = useQuery({
     queryKey: ["schedule", scheduleID],
     queryFn: () => api.getSchedule(scheduleID),
@@ -284,12 +283,7 @@ export function SchedulePage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-10 flex transform-gpu items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
-        <Link to="/" className="text-lg font-semibold tracking-tight focus-visible:ring-2 focus-visible:ring-accent">
-          {appName}
-        </Link>
-        <HeaderControls />
-      </header>
+      <AppHeader />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-balance sm:text-3xl">{data.title}</h1>
@@ -313,6 +307,7 @@ export function SchedulePage() {
           </div>
         )}
       </main>
+      <SiteFooter />
     </div>
   );
 }
@@ -332,16 +327,11 @@ function groupScheduleEvents(data: PublicSchedule): { date: string; events: Publ
 }
 
 function Shell({ children }: { children: ReactNode }) {
-  const appName = useAppName();
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-10 flex transform-gpu items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
-        <Link to="/" className="text-lg font-semibold tracking-tight focus-visible:ring-2 focus-visible:ring-accent">
-          {appName}
-        </Link>
-        <HeaderControls />
-      </header>
+      <AppHeader />
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-4 py-12 sm:px-6">{children}</main>
+      <SiteFooter />
     </div>
   );
 }

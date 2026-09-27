@@ -56,14 +56,34 @@ export interface AdminSchedule {
   event_count: number;
   first_starts_at?: string;
   last_starts_at?: string;
+  is_past: boolean;
   events?: AdminEvent[];
   created_at: string;
   updated_at: string;
 }
 
+export type ScheduleSort = "newest" | "oldest" | "title" | "title_desc" | "updated" | "soonest" | "events";
+
+export interface ScheduleListParams {
+  page?: number;
+  pageSize?: number;
+  sort?: ScheduleSort;
+  q?: string;
+  includePast?: boolean;
+}
+
+export interface AdminSchedulePage {
+  items: AdminSchedule[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface AppSettings {
   app_name: string;
   default_language: "en" | "de";
+  imprint_text: string;
+  privacy_text: string;
 }
 
 export interface ImportCounts {
@@ -140,7 +160,16 @@ export const api = {
   login: (password: string) => request<{ status: string }>("POST", "/api/v1/admin/login", { password }),
   logout: () => request<void>("POST", "/api/v1/admin/logout"),
 
-  listSchedules: () => request<AdminSchedule[]>("GET", "/api/v1/admin/schedules"),
+  listSchedules: (params: ScheduleListParams = {}) => {
+    const query = new URLSearchParams();
+    if (params.page !== undefined) query.set("page", String(params.page));
+    if (params.pageSize !== undefined) query.set("page_size", String(params.pageSize));
+    if (params.sort !== undefined) query.set("sort", params.sort);
+    if (params.q) query.set("q", params.q);
+    if (params.includePast) query.set("include_past", "1");
+    const qs = query.toString();
+    return request<AdminSchedulePage>("GET", `/api/v1/admin/schedules${qs ? `?${qs}` : ""}`);
+  },
   createSchedule: (input: { title: string; description?: string }) =>
     request<AdminSchedule>("POST", "/api/v1/admin/schedules", input),
   getScheduleAdmin: (id: string) => request<AdminSchedule>("GET", `/api/v1/admin/schedules/${id}`),

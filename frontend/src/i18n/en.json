@@ -15,7 +15,9 @@
     "optional": "optional",
     "back": "Back",
     "untitledSchedule": "Untitled schedule",
-    "remove": "Remove"
+    "remove": "Remove",
+    "imprint": "Imprint",
+    "privacy": "Privacy"
   },
   "schedule": {
     "notFound": "Link not found",
@@ -76,6 +78,28 @@
       "when_one": "{{first}}",
       "when_range": "{{first}} – {{last}}",
       "noDates": "No dates yet",
+      "searchPlaceholder": "Search schedules…",
+      "sortLabel": "Sort by",
+      "sortNewest": "Newest first",
+      "sortOldest": "Oldest first",
+      "sortUpdated": "Recently updated",
+      "sortSoonest": "Soonest event",
+      "sortEvents": "Most events",
+      "sortTitleAsc": "Title A–Z",
+      "sortTitleDesc": "Title Z–A",
+      "history": "History",
+      "showPast": "Show past",
+      "showing": "Showing {{from}}–{{to}} of {{total}}",
+      "pageOf": "Page {{page}} of {{pages}}",
+      "prevPage": "Previous",
+      "nextPage": "Next",
+      "pagination": "Pagination",
+      "noResultsTitle": "No matches",
+      "noResults": "No schedules match “{{query}}”.",
+      "clearSearch": "Clear search",
+      "emptyUpcomingTitle": "No upcoming schedules",
+      "emptyUpcoming": "All schedules are in the past. Show past schedules or create a new one.",
+      "pastBadge": "Past",
       "deleted": "Schedule deleted.",
       "duplicateTitle": "Duplicate Schedule",
       "duplicateHint": "Creates a copy with the same events. Attendees are not copied."
@@ -122,6 +146,12 @@
       "appNameHint": "Shown in the header and on the browser tab.",
       "languageTitle": "Default Language",
       "languageHint": "Used when a visitor hasn't picked a language.",
+      "legalTitle": "Imprint & Privacy",
+      "legalHint": "Optional. Plain text shown on /impressum and /datenschutz. Leave empty to hide the footer link.",
+      "imprintLabel": "Imprint",
+      "imprintHint": "Shown on /impressum. Leave empty to hide the link.",
+      "privacyLabel": "Privacy policy",
+      "privacyHint": "Shown on /datenschutz. Leave empty to hide the link.",
       "dataTitle": "Data",
       "exportTitle": "Export",
       "exportHint": "Download the full app state as JSON (no passwords, no tokens).",
@@ -135,6 +165,9 @@
       "importFailed": "Import failed.",
       "logout": "Log Out"
     }
+  },
+  "legal": {
+    "notConfigured": "This page has not been set up yet."
   },
   "errors": {
     "network": "Network error — is the server reachable?",

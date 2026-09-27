@@ -69,15 +69,20 @@ func TestAdminListIncludesEventsAndAttendees(t *testing.T) {
 		t.Fatalf("add attendee status = %d", res.StatusCode)
 	}
 
-	var list []map[string]any
-	res = env.doInto(http.MethodGet, "/api/v1/admin/schedules", nil, cookie, &list)
+	var page struct {
+		Items    []map[string]any `json:"items"`
+		Total    int              `json:"total"`
+		Page     int              `json:"page"`
+		PageSize int              `json:"page_size"`
+	}
+	res = env.doInto(http.MethodGet, "/api/v1/admin/schedules", nil, cookie, &page)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("list status = %d", res.StatusCode)
 	}
-	if len(list) != 1 {
-		t.Fatalf("list length = %d, want 1", len(list))
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("total = %d, items = %d, want 1/1", page.Total, len(page.Items))
 	}
-	s := list[0]
+	s := page.Items[0]
 	events, ok := s["events"].([]any)
 	if !ok || len(events) != 1 {
 		t.Fatalf("expected 1 embedded event in list response, got %v", s["events"])
@@ -98,6 +103,155 @@ func TestAdminListIncludesEventsAndAttendees(t *testing.T) {
 	}
 	if s["last_starts_at"] != "2026-09-20T09:00" {
 		t.Errorf("last_starts_at = %v, want 2026-09-20T09:00", s["last_starts_at"])
+	}
+}
+
+type adminSchedulePage struct {
+	Items    []map[string]any `json:"items"`
+	Total    int              `json:"total"`
+	Page     int              `json:"page"`
+	PageSize int              `json:"page_size"`
+}
+
+func (e *testEnv) listSchedules(cookie *http.Cookie, query string) adminSchedulePage {
+	e.t.Helper()
+	var page adminSchedulePage
+	res := e.doInto(http.MethodGet, "/api/v1/admin/schedules"+query, nil, cookie, &page)
+	if res.StatusCode != http.StatusOK {
+		e.t.Fatalf("list status = %d", res.StatusCode)
+	}
+	return page
+}
+
+func (e *testEnv) createSchedule(cookie *http.Cookie, title string) string {
+	e.t.Helper()
+	res, out := e.do(http.MethodPost, "/api/v1/admin/schedules", map[string]string{"title": title}, cookie)
+	if res.StatusCode != http.StatusCreated {
+		e.t.Fatalf("create schedule status = %d", res.StatusCode)
+	}
+	return out["id"].(string)
+}
+
+func (e *testEnv) createEvent(cookie *http.Cookie, scheduleID string, body map[string]any) map[string]any {
+	e.t.Helper()
+	res, out := e.do(http.MethodPost, "/api/v1/admin/schedules/"+scheduleID+"/events", body, cookie)
+	if res.StatusCode != http.StatusCreated {
+		e.t.Fatalf("create event status = %d; body %v", res.StatusCode, out)
+	}
+	return out
+}
+
+func scheduleTitles(items []map[string]any) []any {
+	out := make([]any, 0, len(items))
+	for _, it := range items {
+		out = append(out, it["title"])
+	}
+	return out
+}
+
+func TestAdminListSearchSortPagination(t *testing.T) {
+	env := newTestEnv(t, time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC))
+	cookie := env.login()
+
+	alpha := env.createSchedule(cookie, "Alpha Practice")
+	beta := env.createSchedule(cookie, "Beta Camp")
+	env.createEvent(cookie, alpha, map[string]any{"name": "Kickoff", "starts_at": "2026-09-20T09:00"})
+	env.createEvent(cookie, beta, map[string]any{"name": "Finals", "starts_at": "2026-09-21T09:00", "location": "Arena"})
+
+	if p := env.listSchedules(cookie, "?q=alpha"); p.Total != 1 || p.Items[0]["title"] != "Alpha Practice" {
+		t.Fatalf("q=alpha total=%d items=%v", p.Total, scheduleTitles(p.Items))
+	}
+
+	if p := env.listSchedules(cookie, "?q=arena"); p.Total != 1 || p.Items[0]["title"] != "Beta Camp" {
+		t.Fatalf("q=arena total=%d items=%v", p.Total, scheduleTitles(p.Items))
+	}
+
+	if p := env.listSchedules(cookie, "?sort=title"); len(p.Items) != 2 || p.Items[0]["title"] != "Alpha Practice" {
+		t.Fatalf("sort=title items=%v", scheduleTitles(p.Items))
+	}
+
+	first := env.listSchedules(cookie, "?page_size=1&page=1")
+	if len(first.Items) != 1 || first.Total != 2 || first.PageSize != 1 {
+		t.Fatalf("page 1 = %+v", first)
+	}
+	second := env.listSchedules(cookie, "?page_size=1&page=2")
+	if len(second.Items) != 1 || second.Items[0]["id"] == first.Items[0]["id"] {
+		t.Fatalf("page 2 = %+v", second)
+	}
+
+	if res, _ := env.do(http.MethodGet, "/api/v1/admin/schedules?sort=bogus", nil, cookie); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid sort status = %d, want 400", res.StatusCode)
+	}
+	if res, _ := env.do(http.MethodGet, "/api/v1/admin/schedules?page_size=999", nil, cookie); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid page_size status = %d, want 400", res.StatusCode)
+	}
+}
+
+func TestAdminListPastFilter(t *testing.T) {
+	env := newTestEnv(t, time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC))
+	cookie := env.login()
+
+	future := env.createSchedule(cookie, "Future")
+	env.createEvent(cookie, future, map[string]any{"name": "Next", "starts_at": "2026-09-20T09:00"})
+	past := env.createSchedule(cookie, "Past")
+	env.createEvent(cookie, past, map[string]any{"name": "Old", "starts_at": "2026-09-10T09:00"})
+	env.createSchedule(cookie, "No Events")
+
+	defaultPage := env.listSchedules(cookie, "")
+	if defaultPage.Total != 2 {
+		t.Fatalf("default total = %d, want 2 (%v)", defaultPage.Total, scheduleTitles(defaultPage.Items))
+	}
+	for _, it := range defaultPage.Items {
+		if it["title"] == "Past" || it["is_past"] == true {
+			t.Fatalf("past schedule shown by default: %+v", it)
+		}
+	}
+
+	all := env.listSchedules(cookie, "?include_past=1")
+	if all.Total != 3 {
+		t.Fatalf("include_past total = %d, want 3 (%v)", all.Total, scheduleTitles(all.Items))
+	}
+	last := all.Items[len(all.Items)-1]
+	if last["title"] != "Past" || last["is_past"] != true {
+		t.Fatalf("past should be last and flagged: %+v", last)
+	}
+
+	today := env.createSchedule(cookie, "Today")
+	env.createEvent(cookie, today, map[string]any{"name": "Today", "starts_at": "2026-09-16T00:00", "all_day": true})
+	if p := env.listSchedules(cookie, "?include_past=1&q=Today"); p.Total != 1 || p.Items[0]["is_past"] != false {
+		t.Fatalf("same-day all-day should not be past: %+v", p.Items)
+	}
+}
+
+func TestAdminDuplicateCopiesEventDetails(t *testing.T) {
+	env := newTestEnv(t, time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC))
+	cookie := env.login()
+
+	sid := env.createSchedule(cookie, "Original")
+	env.createEvent(cookie, sid, map[string]any{"name": "All Day", "starts_at": "2026-09-22T00:00", "all_day": true})
+	env.createEvent(cookie, sid, map[string]any{"name": "Workshop", "starts_at": "2026-09-23T09:00", "ends_at": "2026-09-23T12:30"})
+
+	res, out := env.do(http.MethodPost, "/api/v1/admin/schedules/"+sid+"/duplicate", nil, cookie)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("duplicate status = %d; body %v", res.StatusCode, out)
+	}
+	copyID := out["id"].(string)
+
+	_, detail := env.do(http.MethodGet, "/api/v1/admin/schedules/"+copyID, nil, cookie)
+	events := detail["events"].([]any)
+	if len(events) != 2 {
+		t.Fatalf("copied events = %d, want 2", len(events))
+	}
+	byName := map[string]map[string]any{}
+	for _, e := range events {
+		ev := e.(map[string]any)
+		byName[ev["name"].(string)] = ev
+	}
+	if byName["All Day"]["all_day"] != true || byName["All Day"]["starts_at"] != "2026-09-22T00:00" {
+		t.Errorf("all-day copy = %v", byName["All Day"])
+	}
+	if byName["Workshop"]["ends_at"] != "2026-09-23T12:30" {
+		t.Errorf("timespan copy ends_at = %v, want 2026-09-23T12:30", byName["Workshop"]["ends_at"])
 	}
 }
 
@@ -298,5 +452,38 @@ func TestAdminSettingsAppName(t *testing.T) {
 	}, cookie)
 	if res.StatusCode != http.StatusBadRequest {
 		t.Errorf("empty app_name status = %d, want 400", res.StatusCode)
+	}
+}
+
+func TestAdminLegalTextSettings(t *testing.T) {
+	env := newTestEnv(t, time.Unix(1_800_000_000, 0))
+	cookie := env.login()
+
+	res, out := env.do(http.MethodPut, "/api/v1/admin/settings", map[string]any{
+		"default_language": "de",
+		"imprint_text":     "  Impressum Inhalt  ",
+		"privacy_text":     "Datenschutz Inhalt",
+	}, cookie)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("put legal settings status = %d; body %v", res.StatusCode, out)
+	}
+	if out["imprint_text"] != "Impressum Inhalt" || out["privacy_text"] != "Datenschutz Inhalt" {
+		t.Errorf("admin legal texts = %v / %v", out["imprint_text"], out["privacy_text"])
+	}
+
+	_, pub := env.do(http.MethodGet, "/api/v1/settings", nil, nil)
+	if pub["imprint_text"] != "Impressum Inhalt" || pub["privacy_text"] != "Datenschutz Inhalt" {
+		t.Errorf("public legal texts = %v / %v", pub["imprint_text"], pub["privacy_text"])
+	}
+
+	res, out = env.do(http.MethodPut, "/api/v1/admin/settings", map[string]any{
+		"default_language": "de",
+		"imprint_text":     "   ",
+	}, cookie)
+	if res.StatusCode != http.StatusOK || out["imprint_text"] != "" {
+		t.Fatalf("clear imprint = %d / %v", res.StatusCode, out["imprint_text"])
+	}
+	if out["privacy_text"] != "Datenschutz Inhalt" {
+		t.Errorf("privacy_text should be unchanged, got %v", out["privacy_text"])
 	}
 }

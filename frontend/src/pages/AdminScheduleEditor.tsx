@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Card, Checkbox, Modal, toast, useOverlayState } from "@heroui/react";
 
 import { api } from "../api/client";
-import type { AdminEvent } from "../api/client";
+import type { AdminEvent, AdminSchedule } from "../api/client";
 import { formatDateTime, formatTimeSpan, todayISO } from "../lib/datetime";
 import { apiErrorMessage } from "../lib/errors";
 import { ShaleDatePicker, ShaleTimeField } from "../components/DateTimeFields";
@@ -20,6 +20,18 @@ type EventFormState = {
   endTime: string;
   allDay: boolean;
 };
+
+function compareEvents(a: AdminEvent, b: AdminEvent): number {
+  return (
+    a.starts_at.localeCompare(b.starts_at) ||
+    a.created_at.localeCompare(b.created_at) ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+function sortEvents(events: AdminEvent[]): AdminEvent[] {
+  return [...events].sort(compareEvents);
+}
 
 function emptyEventForm(): EventFormState {
   return { id: null, name: "", description: "", location: "", date: "", time: "09:00", endTime: "", allDay: false };
@@ -76,9 +88,31 @@ export function AdminScheduleEditor() {
     }
   }, [schedule]);
 
+  useEffect(() => {
+    setForm(emptyEventForm());
+    setAttendeeNames({});
+    setDeleteTarget(null);
+  }, [scheduleID]);
+
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["admin-schedule", scheduleID] });
-    void queryClient.invalidateQueries({ queryKey: ["admin-schedules"] });
+    void queryClient.invalidateQueries({
+      queryKey: ["admin-schedule", scheduleID],
+      refetchType: "all",
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["admin-schedules"],
+      refetchType: "all",
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["schedule", scheduleID],
+      refetchType: "all",
+    });
+  };
+
+  const setScheduleCache = (updater: (current: AdminSchedule) => AdminSchedule) => {
+    queryClient.setQueryData<AdminSchedule>(["admin-schedule", scheduleID], (old) =>
+      old ? updater(old) : old,
+    );
   };
 
   const dirty =
@@ -95,7 +129,13 @@ export function AdminScheduleEditor() {
 
   const updateSchedule = useMutation({
     mutationFn: () => api.updateSchedule(scheduleID, { title: title.trim(), description }),
-    onSuccess: () => {
+    onSuccess: (updated) => {
+      setScheduleCache((current) => ({
+        ...current,
+        title: updated.title,
+        description: updated.description,
+        updated_at: updated.updated_at,
+      }));
       invalidate();
       toast.success(t("admin.editor.saved"));
     },
@@ -125,8 +165,17 @@ export function AdminScheduleEditor() {
         ends_at: endsAt,
       });
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       eventModal.close();
+      setScheduleCache((current) => {
+        const events = current.events ?? [];
+        const exists = events.some((e) => e.id === saved.id);
+        const next = exists
+          ? events.map((e) => (e.id === saved.id ? { ...e, ...saved, attendees: e.attendees } : e))
+          : [...events, { ...saved, attendees: [] }];
+        const sorted = sortEvents(next);
+        return { ...current, events: sorted, event_count: sorted.length };
+      });
       invalidate();
     },
     onError: (err) => toast.danger(apiErrorMessage(err, t)),
@@ -134,8 +183,12 @@ export function AdminScheduleEditor() {
 
   const deleteEvent = useMutation({
     mutationFn: (eventID: string) => api.deleteEvent(eventID),
-    onSuccess: () => {
+    onSuccess: (_res, eventID) => {
       deleteEventModal.close();
+      setScheduleCache((current) => {
+        const events = (current.events ?? []).filter((e) => e.id !== eventID);
+        return { ...current, events, event_count: events.length };
+      });
       invalidate();
       toast.success(t("admin.editor.eventDeleted"));
     },
@@ -146,7 +199,7 @@ export function AdminScheduleEditor() {
     mutationFn: () => api.duplicateSchedule(scheduleID),
     onSuccess: (created) => {
       duplicateModal.close();
-      void queryClient.invalidateQueries({ queryKey: ["admin-schedules"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-schedules"], refetchType: "all" });
       toast.success(t("admin.editor.duplicateDone"));
       navigate(`/schedules/${created.id}`);
     },
@@ -155,8 +208,14 @@ export function AdminScheduleEditor() {
 
   const addAttendee = useMutation({
     mutationFn: (input: { eventID: string; name: string }) => api.addAttendee(input.eventID, input.name),
-    onSuccess: (_res, vars) => {
+    onSuccess: (attendee, vars) => {
       setAttendeeNames((m) => ({ ...m, [vars.eventID]: "" }));
+      setScheduleCache((current) => ({
+        ...current,
+        events: (current.events ?? []).map((e) =>
+          e.id === vars.eventID ? { ...e, attendees: [...e.attendees, attendee] } : e,
+        ),
+      }));
       invalidate();
     },
     onError: (err) => toast.danger(apiErrorMessage(err, t)),
@@ -164,7 +223,16 @@ export function AdminScheduleEditor() {
 
   const removeAttendee = useMutation({
     mutationFn: (attendeeID: string) => api.removeAttendee(attendeeID),
-    onSuccess: invalidate,
+    onSuccess: (_res, attendeeID) => {
+      setScheduleCache((current) => ({
+        ...current,
+        events: (current.events ?? []).map((e) => ({
+          ...e,
+          attendees: e.attendees.filter((a) => a.id !== attendeeID),
+        })),
+      }));
+      invalidate();
+    },
     onError: () => toast.danger(t("errors.unexpected")),
   });
 

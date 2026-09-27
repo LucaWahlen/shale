@@ -15,4 +15,19 @@ type ScheduleWithCount struct {
 	EventCount    int
 	FirstStartsAt string
 	LastStartsAt  string
+	LastEndsAt    string
+}
+
+type ScheduleListQuery struct {
+	Search      string
+	Sort        string
+	IncludePast bool
+	Now         string
+	Page        int
+	PageSize    int
+}
+
+type SchedulePage struct {
+	Items []ScheduleWithCount
+	Total int
 }
