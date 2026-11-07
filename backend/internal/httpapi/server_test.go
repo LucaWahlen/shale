@@ -4,16 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	"shale/internal/db"
-	"shale/internal/repository/sqlite"
+	"shale/internal/domain"
+	"shale/internal/repository/memory"
+	"shale/internal/repository/postgres"
 	"shale/internal/service"
 )
 
@@ -25,28 +27,48 @@ type testEnv struct {
 
 func newTestEnv(t *testing.T, now time.Time) *testEnv {
 	t.Helper()
-	conn, err := db.Open(fmt.Sprintf("%s/test.db", t.TempDir()))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
+	var (
+		scheduleRepo domain.ScheduleRepository
+		eventRepo    domain.EventRepository
+		attendeeRepo domain.AttendeeRepository
+		settingsRepo domain.SettingsRepository
+		tx           domain.TransactionManager
+	)
+
+	if dsn := os.Getenv("SHALE_TEST_DATABASE_URL"); dsn != "" {
+		conn, err := db.Open(dsn)
+		if err != nil {
+			t.Fatalf("open db: %v", err)
+		}
+		t.Cleanup(func() { conn.Close() })
+		if err := db.Migrate(context.Background(), conn); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		if _, err := conn.Exec(`DELETE FROM schedules; DELETE FROM settings; INSERT INTO settings (key, value) VALUES ('default_language', 'en')`); err != nil {
+			t.Fatalf("reset db: %v", err)
+		}
+		store := postgres.New(conn)
+		scheduleRepo = postgres.NewScheduleRepo(store)
+		eventRepo = postgres.NewEventRepo(store)
+		attendeeRepo = postgres.NewAttendeeRepo(store)
+		settingsRepo = postgres.NewSettingsRepo(store)
+		tx = store
+	} else {
+		store := memory.New()
+		scheduleRepo = memory.NewScheduleRepo(store)
+		eventRepo = memory.NewEventRepo(store)
+		attendeeRepo = memory.NewAttendeeRepo(store)
+		settingsRepo = memory.NewSettingsRepo(store)
+		tx = store
 	}
-	t.Cleanup(func() { conn.Close() })
-	if err := db.Migrate(context.Background(), conn); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	store := sqlite.New(conn)
-	scheduleRepo := sqlite.NewScheduleRepo(store)
-	eventRepo := sqlite.NewEventRepo(store)
-	attendeeRepo := sqlite.NewAttendeeRepo(store)
-	settingsRepo := sqlite.NewSettingsRepo(store)
-	auditRepo := sqlite.NewAuditRepo(store)
+
 	clock := func() time.Time { return now }
 
-	auditSvc := service.NewAuditService(auditRepo, settingsRepo)
-	scheduleSvc := service.NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, auditSvc, clock)
-	eventSvc := service.NewEventService(scheduleRepo, eventRepo, auditSvc)
-	attendeeSvc := service.NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, auditSvc, clock)
+	scheduleSvc := service.NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, settingsRepo, clock)
+	eventSvc := service.NewEventService(scheduleRepo, eventRepo)
+	attendeeSvc := service.NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, clock)
 	settingsSvc := service.NewSettingsService(settingsRepo)
-	transferSvc := service.NewTransferService(scheduleRepo, eventRepo, attendeeRepo, settingsSvc, store, clock)
+	transferSvc := service.NewTransferService(scheduleRepo, eventRepo, attendeeRepo, settingsSvc, tx, clock)
 	authSvc := service.NewAuthService("test-password", clock)
 
 	api := New(Deps{
@@ -56,7 +78,6 @@ func newTestEnv(t *testing.T, now time.Time) *testEnv {
 		Settings:  settingsSvc,
 		Transfer:  transferSvc,
 		Auth:      authSvc,
-		Audit:     auditSvc,
 	}, slog.New(slog.DiscardHandler))
 
 	return &testEnv{t: t, api: api.Handler(), auth: authSvc}

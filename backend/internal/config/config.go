@@ -5,16 +5,18 @@ import (
 	"os"
 )
 
+const DefaultDatabaseURL = "postgres://shale:shale@postgres:5432/shale?sslmode=disable"
+
 type Config struct {
 	AdminPassword string
-	DBPath        string
+	DatabaseURL   string
 	Addr          string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
 		AdminPassword: os.Getenv("SHALE_ADMIN_PASSWORD"),
-		DBPath:        envDefault("SHALE_DB_PATH", "/data/shale.db"),
+		DatabaseURL:   envDefault("SHALE_DATABASE_URL", DefaultDatabaseURL),
 		Addr:          envDefault("SHALE_ADDR", ":8080"),
 	}
 	if cfg.AdminPassword == "" {

@@ -396,7 +396,7 @@ func (s *Server) handleGetAdminSettings(w http.ResponseWriter, r *http.Request) 
 		"app_name":             view.AppName,
 		"imprint_text":         view.ImprintText,
 		"privacy_text":         view.PrivacyText,
-		"audit_retention_days": view.AuditRetentionDays,
+		"event_retention_days": view.EventRetentionDays,
 	})
 }
 
@@ -406,7 +406,7 @@ func (s *Server) handlePutAdminSettings(w http.ResponseWriter, r *http.Request) 
 		AppName            *string `json:"app_name"`
 		ImprintText        *string `json:"imprint_text"`
 		PrivacyText        *string `json:"privacy_text"`
-		AuditRetentionDays *int    `json:"audit_retention_days"`
+		EventRetentionDays *int    `json:"event_retention_days"`
 	}
 	if err := readJSON(w, r, &req); err != nil {
 		writeError(w, err)
@@ -434,11 +434,12 @@ func (s *Server) handlePutAdminSettings(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	if req.AuditRetentionDays != nil {
-		if err := s.deps.Settings.SetAuditRetentionDays(r.Context(), *req.AuditRetentionDays); err != nil {
+	if req.EventRetentionDays != nil {
+		if err := s.deps.Settings.SetEventRetentionDays(r.Context(), *req.EventRetentionDays); err != nil {
 			writeError(w, err)
 			return
 		}
+		s.deps.Schedules.Prune(r.Context())
 	}
 	view, err := s.deps.Settings.Get(r.Context())
 	if err != nil {
@@ -450,7 +451,7 @@ func (s *Server) handlePutAdminSettings(w http.ResponseWriter, r *http.Request) 
 		"app_name":             view.AppName,
 		"imprint_text":         view.ImprintText,
 		"privacy_text":         view.PrivacyText,
-		"audit_retention_days": view.AuditRetentionDays,
+		"event_retention_days": view.EventRetentionDays,
 	})
 }
 

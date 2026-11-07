@@ -1,4 +1,19 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-shale}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shale}
+      POSTGRES_DB: ${POSTGRES_DB:-shale}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-shale} -d $${POSTGRES_DB:-shale}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   shale:
     build:
       context: .
@@ -8,10 +23,11 @@ services:
       - "8080:8080"
     environment:
       SHALE_ADMIN_PASSWORD: ${SHALE_ADMIN_PASSWORD:?set SHALE_ADMIN_PASSWORD, e.g. in .env}
-      SHALE_DB_PATH: /data/shale.db
-    volumes:
-      - shale-data:/data
+      SHALE_DATABASE_URL: ${SHALE_DATABASE_URL:-postgres://${POSTGRES_USER:-shale}:${POSTGRES_PASSWORD:-shale}@postgres:5432/${POSTGRES_DB:-shale}?sslmode=disable}
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  shale-data:
+  postgres-data:

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"shale/internal/domain"
@@ -10,11 +11,10 @@ import (
 type EventService struct {
 	schedules domain.ScheduleRepository
 	events    domain.EventRepository
-	audit     *AuditService
 }
 
-func NewEventService(schedules domain.ScheduleRepository, events domain.EventRepository, audit *AuditService) *EventService {
-	return &EventService{schedules: schedules, events: events, audit: audit}
+func NewEventService(schedules domain.ScheduleRepository, events domain.EventRepository) *EventService {
+	return &EventService{schedules: schedules, events: events}
 }
 
 type EventInput struct {
@@ -98,14 +98,13 @@ func (s *EventService) Create(ctx context.Context, scheduleID string, in EventIn
 	if err := s.events.Create(ctx, &ev); err != nil {
 		return domain.Event{}, err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionEventCreated,
-		Actor:         domain.AuditActorAdmin,
-		ScheduleID:    sched.ID,
-		ScheduleTitle: sched.Title,
-		EventID:       ev.ID,
-		EventName:     ev.Name,
-	})
+	slog.Info("event created",
+		"actor", "admin",
+		"schedule_id", sched.ID,
+		"schedule_title", sched.Title,
+		"event_id", ev.ID,
+		"event_name", ev.Name,
+	)
 	return ev, nil
 }
 
@@ -153,14 +152,13 @@ func (s *EventService) Patch(ctx context.Context, id string, patch EventPatch) (
 	if err != nil {
 		return domain.Event{}, err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionEventUpdated,
-		Actor:         domain.AuditActorAdmin,
-		ScheduleID:    sched.ID,
-		ScheduleTitle: sched.Title,
-		EventID:       existing.ID,
-		EventName:     existing.Name,
-	})
+	slog.Info("event updated",
+		"actor", "admin",
+		"schedule_id", sched.ID,
+		"schedule_title", sched.Title,
+		"event_id", existing.ID,
+		"event_name", existing.Name,
+	)
 	return existing, nil
 }
 
@@ -176,13 +174,12 @@ func (s *EventService) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionEventDeleted,
-		Actor:         domain.AuditActorAdmin,
-		ScheduleID:    sched.ID,
-		ScheduleTitle: sched.Title,
-		EventID:       existing.ID,
-		EventName:     existing.Name,
-	})
+	slog.Info("event deleted",
+		"actor", "admin",
+		"schedule_id", sched.ID,
+		"schedule_title", sched.Title,
+		"event_id", existing.ID,
+		"event_name", existing.Name,
+	)
 	return nil
 }

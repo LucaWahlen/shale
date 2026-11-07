@@ -32,7 +32,7 @@ export function AdminSettings() {
       setLanguage(settings.default_language);
       setImprintText(settings.imprint_text);
       setPrivacyText(settings.privacy_text);
-      setRetentionDays(settings.audit_retention_days ?? 0);
+      setRetentionDays(settings.event_retention_days ?? 0);
     }
   }, [settings]);
 
@@ -42,7 +42,7 @@ export function AdminSettings() {
       language !== settings.default_language ||
       imprintText.trim() !== settings.imprint_text ||
       privacyText.trim() !== settings.privacy_text ||
-      retentionDays !== (settings.audit_retention_days ?? 0));
+      retentionDays !== (settings.event_retention_days ?? 0));
 
   const saveSettings = useMutation({
     mutationFn: () =>
@@ -51,11 +51,12 @@ export function AdminSettings() {
         default_language: language,
         imprint_text: imprintText.trim(),
         privacy_text: privacyText.trim(),
-        audit_retention_days: retentionDays,
+        event_retention_days: retentionDays,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
       void queryClient.invalidateQueries({ queryKey: ["public-settings"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-schedules"] });
       toast.success(t("admin.editor.saved"));
     },
     onError: (err) => toast.danger(apiErrorMessage(err, t)),
@@ -167,14 +168,14 @@ export function AdminSettings() {
       <Card>
         <Card.Content className="gap-4">
           <div>
-            <h2 className="text-base font-semibold">{t("admin.settings.auditTitle")}</h2>
-            <p className="text-sm text-muted">{t("admin.settings.auditHint")}</p>
+            <h2 className="text-base font-semibold">{t("admin.settings.housekeepingTitle")}</h2>
+            <p className="text-sm text-muted">{t("admin.settings.housekeepingHint")}</p>
           </div>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">{t("admin.settings.retentionLabel")}</span>
             <input
               type="number"
-              name="audit-retention-days"
+              name="event-retention-days"
               min={0}
               max={3650}
               step={1}

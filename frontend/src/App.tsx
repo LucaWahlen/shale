@@ -9,7 +9,6 @@ import { AdminLayout } from "./pages/AdminLayout";
 import { AdminSchedules } from "./pages/AdminSchedules";
 import { AdminScheduleEditor } from "./pages/AdminScheduleEditor";
 import { AdminSettings } from "./pages/AdminSettings";
-import { AdminAudit } from "./pages/AdminAudit";
 import { SchedulePage } from "./pages/SchedulePage";
 import { AdminLogin } from "./pages/AdminLogin";
 import { ImpressumPage, PrivacyPage } from "./pages/LegalPage";
@@ -43,7 +42,6 @@ export default function App() {
             <Route index element={<AdminSchedules />} />
             <Route path="schedules/:id" element={<AdminScheduleEditor />} />
             <Route path="settings" element={<AdminSettings />} />
-            <Route path="audit" element={<AdminAudit />} />
           </Route>
         <Route path="/s/:id" element={<SchedulePage />} />
         <Route path="/impressum" element={<ImpressumPage />} />

@@ -255,67 +255,62 @@ func TestAdminDuplicateCopiesEventDetails(t *testing.T) {
 	}
 }
 
-func TestAdminAuditLog(t *testing.T) {
+func TestAdminEventHousekeeping(t *testing.T) {
 	env := newTestEnv(t, time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC))
 	cookie := env.login()
 
-	sid := env.createSchedule(cookie, "Audit Schedule")
-	ev := env.createEvent(cookie, sid, map[string]any{"name": "Audit Event", "starts_at": "2026-09-20T09:00"})
-	eventID := ev["id"].(string)
+	expiredSched := env.createSchedule(cookie, "Expired Schedule")
+	env.createEvent(cookie, expiredSched, map[string]any{"name": "Old Event", "starts_at": "2026-09-01T09:00"})
 
-	res, _ := env.do(http.MethodPost, "/api/v1/schedules/"+sid+"/events/"+eventID+"/attend", map[string]string{"name": "Alice"}, nil)
+	mixedSched := env.createSchedule(cookie, "Mixed Schedule")
+	env.createEvent(cookie, mixedSched, map[string]any{"name": "Expired Part", "starts_at": "2026-09-02T09:00"})
+	env.createEvent(cookie, mixedSched, map[string]any{"name": "Upcoming Part", "starts_at": "2026-09-20T09:00"})
+
+	emptySched := env.createSchedule(cookie, "Empty Schedule")
+
+	res, out := env.do(http.MethodPut, "/api/v1/admin/settings", map[string]any{
+		"default_language":     "de",
+		"event_retention_days": 7,
+	}, cookie)
+	if res.StatusCode != http.StatusOK || out["event_retention_days"] != float64(7) {
+		t.Fatalf("set retention = %d / %v", res.StatusCode, out["event_retention_days"])
+	}
+
+	res, _ = env.do(http.MethodGet, "/api/v1/admin/schedules/"+expiredSched, nil, cookie)
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("expired schedule status = %d, want 404", res.StatusCode)
+	}
+
+	res, mixedDetail := env.do(http.MethodGet, "/api/v1/admin/schedules/"+mixedSched, nil, cookie)
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("public attend status = %d", res.StatusCode)
+		t.Fatalf("mixed schedule status = %d, want 200", res.StatusCode)
+	}
+	mixedEvents := mixedDetail["events"].([]any)
+	if len(mixedEvents) != 1 || mixedEvents[0].(map[string]any)["name"] != "Upcoming Part" {
+		t.Errorf("mixed schedule events = %v, want only Upcoming Part", mixedEvents)
 	}
 
-	var page struct {
-		Items []map[string]any `json:"items"`
-		Total int              `json:"total"`
-	}
-	res = env.doInto(http.MethodGet, "/api/v1/admin/audit?schedule_id="+sid, nil, cookie, &page)
+	res, _ = env.do(http.MethodGet, "/api/v1/admin/schedules/"+emptySched, nil, cookie)
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("audit list status = %d", res.StatusCode)
-	}
-	actions := map[string]bool{}
-	for _, it := range page.Items {
-		actions[it["action"].(string)] = true
-	}
-	for _, want := range []string{"schedule.created", "event.created", "attendee.added"} {
-		if !actions[want] {
-			t.Errorf("missing audit action %s (got %v)", want, actions)
-		}
-	}
-	found := false
-	for _, it := range page.Items {
-		if it["action"] == "attendee.added" && it["actor_name"] == "Alice" && it["actor"] == "public" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected public attendee.added entry for Alice: %v", page.Items)
-	}
-
-	res, _ = env.do(http.MethodGet, "/api/v1/admin/audit?action=bogus", nil, cookie)
-	if res.StatusCode != http.StatusBadRequest {
-		t.Errorf("invalid action filter status = %d, want 400", res.StatusCode)
+		t.Errorf("empty schedule status = %d, want 200 (must not delete schedule that never had events)", res.StatusCode)
 	}
 }
 
-func TestAdminAuditRetentionSetting(t *testing.T) {
+func TestAdminEventRetentionSetting(t *testing.T) {
 	env := newTestEnv(t, time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC))
 	cookie := env.login()
 
 	res, out := env.do(http.MethodPut, "/api/v1/admin/settings", map[string]any{
 		"default_language":     "de",
-		"audit_retention_days": 30,
+		"event_retention_days": 30,
 	}, cookie)
-	if res.StatusCode != http.StatusOK || out["audit_retention_days"] != float64(30) {
-		t.Fatalf("set retention = %d / %v", res.StatusCode, out["audit_retention_days"])
+	if res.StatusCode != http.StatusOK || out["event_retention_days"] != float64(30) {
+		t.Fatalf("set retention = %d / %v", res.StatusCode, out["event_retention_days"])
 	}
 
 	res, _ = env.do(http.MethodPut, "/api/v1/admin/settings", map[string]any{
 		"default_language":     "de",
-		"audit_retention_days": -1,
+		"event_retention_days": -1,
 	}, cookie)
 	if res.StatusCode != http.StatusBadRequest {
 		t.Errorf("negative retention status = %d, want 400", res.StatusCode)

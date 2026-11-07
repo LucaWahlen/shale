@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func scanAttendee(sc interface{ Scan(...any) error }) (domain.Attendee, error) {
 
 func (r *AttendeeRepo) ListByEvent(ctx context.Context, eventID string) ([]domain.Attendee, error) {
 	rows, err := r.db.runner(ctx).QueryContext(ctx, `
-		SELECT `+attendeeColumns+` FROM attendees WHERE event_id = ? ORDER BY created_at, rowid`, eventID)
+		SELECT `+attendeeColumns+` FROM attendees WHERE event_id = $1 ORDER BY created_at, id`, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (r *AttendeeRepo) ListByEvent(ctx context.Context, eventID string) ([]domai
 
 func (r *AttendeeRepo) GetByID(ctx context.Context, id string) (domain.Attendee, error) {
 	row := r.db.runner(ctx).QueryRowContext(ctx,
-		`SELECT `+attendeeColumns+` FROM attendees WHERE id = ?`, id)
+		`SELECT `+attendeeColumns+` FROM attendees WHERE id = $1`, id)
 	a, err := scanAttendee(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Attendee{}, domain.ErrNotFound("attendee")
@@ -58,7 +58,7 @@ func (r *AttendeeRepo) GetByID(ctx context.Context, id string) (domain.Attendee,
 
 func (r *AttendeeRepo) FindByEventAndNormalizedName(ctx context.Context, eventID string, normalized string) (domain.Attendee, error) {
 	row := r.db.runner(ctx).QueryRowContext(ctx,
-		`SELECT `+attendeeColumns+` FROM attendees WHERE event_id = ? AND normalized_name = ?`, eventID, normalized)
+		`SELECT `+attendeeColumns+` FROM attendees WHERE event_id = $1 AND normalized_name = $2`, eventID, normalized)
 	a, err := scanAttendee(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Attendee{}, domain.ErrNotFound("attendee")
@@ -74,14 +74,14 @@ func (r *AttendeeRepo) Create(ctx context.Context, a *domain.Attendee) error {
 	}
 	_, err := r.db.runner(ctx).ExecContext(ctx, `
 		INSERT INTO attendees (id, event_id, name, normalized_name, manage_token, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
+		VALUES ($1, $2, $3, $4, $5, $6)`,
 		a.ID, a.EventID, a.Name, a.NormalizedName, a.ManageToken, formatTime(now))
 	return mapConstraint(err, "this name is already taken for this event")
 }
 
 func (r *AttendeeRepo) UpdateToken(ctx context.Context, id string, token string) error {
 	res, err := r.db.runner(ctx).ExecContext(ctx,
-		`UPDATE attendees SET manage_token = ? WHERE id = ?`, token, id)
+		`UPDATE attendees SET manage_token = $1 WHERE id = $2`, token, id)
 	if err := mapConstraint(err, "token conflict"); err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (r *AttendeeRepo) UpdateToken(ctx context.Context, id string, token string)
 }
 
 func (r *AttendeeRepo) Delete(ctx context.Context, id string) error {
-	res, err := r.db.runner(ctx).ExecContext(ctx, `DELETE FROM attendees WHERE id = ?`, id)
+	res, err := r.db.runner(ctx).ExecContext(ctx, `DELETE FROM attendees WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}

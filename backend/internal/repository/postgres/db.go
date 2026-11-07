@@ -1,9 +1,12 @@
-package sqlite
+package postgres
 
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"shale/internal/domain"
 )
@@ -53,11 +56,20 @@ func mapConstraint(err error, conflictMessage string) error {
 	if err == nil {
 		return nil
 	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505":
+			return domain.NewError(domain.KindConflict, conflictMessage)
+		case "23503":
+			return domain.NewError(domain.KindNotFound, "referenced record does not exist")
+		}
+	}
 	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "UNIQUE constraint failed"):
+	case strings.Contains(msg, "duplicate key value violates unique constraint"):
 		return domain.NewError(domain.KindConflict, conflictMessage)
-	case strings.Contains(msg, "FOREIGN KEY constraint failed"):
+	case strings.Contains(msg, "violates foreign key constraint"):
 		return domain.NewError(domain.KindNotFound, "referenced record does not exist")
 	}
 	return err

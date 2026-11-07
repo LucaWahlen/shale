@@ -16,7 +16,7 @@ import (
 	"shale/internal/config"
 	"shale/internal/db"
 	"shale/internal/httpapi"
-	"shale/internal/repository/sqlite"
+	"shale/internal/repository/postgres"
 	"shale/internal/service"
 	"shale/web"
 )
@@ -39,7 +39,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	conn, err := db.Open(cfg.DBPath)
+	conn, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
@@ -48,20 +48,31 @@ func run() error {
 		return err
 	}
 
-	store := sqlite.New(conn)
-	scheduleRepo := sqlite.NewScheduleRepo(store)
-	eventRepo := sqlite.NewEventRepo(store)
-	attendeeRepo := sqlite.NewAttendeeRepo(store)
-	settingsRepo := sqlite.NewSettingsRepo(store)
-	auditRepo := sqlite.NewAuditRepo(store)
+	store := postgres.New(conn)
+	scheduleRepo := postgres.NewScheduleRepo(store)
+	eventRepo := postgres.NewEventRepo(store)
+	attendeeRepo := postgres.NewAttendeeRepo(store)
+	settingsRepo := postgres.NewSettingsRepo(store)
 
 	clock := func() time.Time { return time.Now() }
 
-	auditSvc := service.NewAuditService(auditRepo, settingsRepo)
-	auditSvc.Prune(ctx)
-	scheduleSvc := service.NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, auditSvc, clock)
-	eventSvc := service.NewEventService(scheduleRepo, eventRepo, auditSvc)
-	attendeeSvc := service.NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, auditSvc, clock)
+	scheduleSvc := service.NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, settingsRepo, clock)
+	scheduleSvc.Prune(ctx)
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				scheduleSvc.Prune(ctx)
+			}
+		}
+	}()
+
+	eventSvc := service.NewEventService(scheduleRepo, eventRepo)
+	attendeeSvc := service.NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, clock)
 	settingsSvc := service.NewSettingsService(settingsRepo)
 	transferSvc := service.NewTransferService(scheduleRepo, eventRepo, attendeeRepo, settingsSvc, store, clock)
 
@@ -72,7 +83,6 @@ func run() error {
 		Settings:  settingsSvc,
 		Transfer:  transferSvc,
 		Auth:      service.NewAuthService(cfg.AdminPassword, clock),
-		Audit:     auditSvc,
 	}, logger)
 
 	spa, err := web.Handler()
@@ -98,7 +108,7 @@ func run() error {
 			errCh <- err
 		}
 	}()
-	logger.Info("shale listening", "addr", cfg.Addr, "db_path", cfg.DBPath)
+	logger.Info("shale listening", "addr", cfg.Addr)
 
 	select {
 	case <-ctx.Done():

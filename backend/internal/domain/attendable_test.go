@@ -13,6 +13,7 @@ func TestAttendable(t *testing.T) {
 	tests := []struct {
 		name     string
 		startsAt string
+		endsAt   string
 		now      time.Time
 		want     bool
 	}{
@@ -21,14 +22,17 @@ func TestAttendable(t *testing.T) {
 		{name: "today earlier", startsAt: "2026-09-16T08:00", now: at(2026, 9, 16, 12, 0), want: true},
 		{name: "today exact", startsAt: "2026-09-16T12:00", now: at(2026, 9, 16, 12, 0), want: true},
 		{name: "yesterday", startsAt: "2026-09-15T18:00", now: at(2026, 9, 16, 12, 0), want: false},
+		{name: "multi-day started yesterday ends tomorrow", startsAt: "2026-09-15T09:00", endsAt: "2026-09-17T17:00", now: at(2026, 9, 16, 12, 0), want: true},
+		{name: "multi-day ends today earlier", startsAt: "2026-09-15T09:00", endsAt: "2026-09-16T10:00", now: at(2026, 9, 16, 18, 0), want: true},
+		{name: "multi-day ended yesterday", startsAt: "2026-09-14T09:00", endsAt: "2026-09-15T17:00", now: at(2026, 9, 16, 0, 0), want: false},
 		{name: "last week", startsAt: "2026-09-09T09:00", now: at(2026, 9, 16, 12, 0), want: false},
 		{name: "year boundary still same day", startsAt: "2026-01-01T00:00", now: at(2026, 1, 1, 23, 59), want: true},
 		{name: "invalid format", startsAt: "not-a-date", now: at(2026, 9, 16, 12, 0), want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Attendable(tt.startsAt, tt.now); got != tt.want {
-				t.Errorf("Attendable(%q, %v) = %v, want %v", tt.startsAt, tt.now, got, tt.want)
+			if got := Attendable(tt.startsAt, tt.now, tt.endsAt); got != tt.want {
+				t.Errorf("Attendable(%q, %v, %q) = %v, want %v", tt.startsAt, tt.now, tt.endsAt, got, tt.want)
 			}
 		})
 	}

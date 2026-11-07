@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/subtle"
+	"log/slog"
 
 	"shale/internal/domain"
 )
@@ -11,12 +12,11 @@ type AttendeeService struct {
 	schedules domain.ScheduleRepository
 	events    domain.EventRepository
 	attendees domain.AttendeeRepository
-	audit     *AuditService
 	clock     Clock
 }
 
-func NewAttendeeService(schedules domain.ScheduleRepository, events domain.EventRepository, attendees domain.AttendeeRepository, audit *AuditService, clock Clock) *AttendeeService {
-	return &AttendeeService{schedules: schedules, events: events, attendees: attendees, audit: audit, clock: clock}
+func NewAttendeeService(schedules domain.ScheduleRepository, events domain.EventRepository, attendees domain.AttendeeRepository, clock Clock) *AttendeeService {
+	return &AttendeeService{schedules: schedules, events: events, attendees: attendees, clock: clock}
 }
 
 type AttendResult struct {
@@ -34,7 +34,7 @@ func (s *AttendeeService) Attend(ctx context.Context, scheduleID string, eventID
 	if err != nil {
 		return AttendResult{}, err
 	}
-	if !domain.Attendable(ev.StartsAt, s.clock()) {
+	if !domain.Attendable(ev.StartsAt, s.clock(), ev.EndsAt) {
 		return AttendResult{}, domain.NewError(domain.KindNotAttendable, "attendance is closed for this event")
 	}
 	name, err := domain.ValidateName(rawName)
@@ -78,15 +78,14 @@ func (s *AttendeeService) Attend(ctx context.Context, scheduleID string, eventID
 		}
 		return AttendResult{}, err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionAttendeeAdded,
-		Actor:         domain.AuditActorPublic,
-		ActorName:     att.Name,
-		ScheduleID:    sched.ID,
-		ScheduleTitle: sched.Title,
-		EventID:       ev.ID,
-		EventName:     ev.Name,
-	})
+	slog.Info("attendee added",
+		"actor", "public",
+		"actor_name", att.Name,
+		"schedule_id", sched.ID,
+		"schedule_title", sched.Title,
+		"event_id", ev.ID,
+		"event_name", ev.Name,
+	)
 	return AttendResult{Attendee: att, Token: token, Created: true}, nil
 }
 
@@ -106,7 +105,7 @@ func (s *AttendeeService) Revert(ctx context.Context, scheduleID string, eventID
 	if att.EventID != ev.ID {
 		return domain.ErrNotFound("attendee")
 	}
-	if !domain.Attendable(ev.StartsAt, s.clock()) {
+	if !domain.Attendable(ev.StartsAt, s.clock(), ev.EndsAt) {
 		return domain.NewError(domain.KindNotAttendable, "attendance is closed for this event")
 	}
 	if subtle.ConstantTimeCompare([]byte(att.ManageToken), []byte(token)) != 1 {
@@ -115,15 +114,14 @@ func (s *AttendeeService) Revert(ctx context.Context, scheduleID string, eventID
 	if err := s.attendees.Delete(ctx, att.ID); err != nil {
 		return err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionAttendeeRemoved,
-		Actor:         domain.AuditActorPublic,
-		ActorName:     att.Name,
-		ScheduleID:    sched.ID,
-		ScheduleTitle: sched.Title,
-		EventID:       ev.ID,
-		EventName:     ev.Name,
-	})
+	slog.Info("attendee removed",
+		"actor", "public",
+		"actor_name", att.Name,
+		"schedule_id", sched.ID,
+		"schedule_title", sched.Title,
+		"event_id", ev.ID,
+		"event_name", ev.Name,
+	)
 	return nil
 }
 
@@ -164,15 +162,14 @@ func (s *AttendeeService) AdminAdd(ctx context.Context, eventID string, rawName 
 		}
 		return domain.Attendee{}, err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionAttendeeAdded,
-		Actor:         domain.AuditActorAdmin,
-		ActorName:     att.Name,
-		ScheduleID:    sched.ID,
-		ScheduleTitle: sched.Title,
-		EventID:       ev.ID,
-		EventName:     ev.Name,
-	})
+	slog.Info("attendee added",
+		"actor", "admin",
+		"actor_name", att.Name,
+		"schedule_id", sched.ID,
+		"schedule_title", sched.Title,
+		"event_id", ev.ID,
+		"event_name", ev.Name,
+	)
 	return att, nil
 }
 
@@ -192,15 +189,14 @@ func (s *AttendeeService) AdminRemove(ctx context.Context, attendeeID string) er
 	if err := s.attendees.Delete(ctx, attendeeID); err != nil {
 		return err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionAttendeeRemoved,
-		Actor:         domain.AuditActorAdmin,
-		ActorName:     att.Name,
-		ScheduleID:    sched.ID,
-		ScheduleTitle: sched.Title,
-		EventID:       ev.ID,
-		EventName:     ev.Name,
-	})
+	slog.Info("attendee removed",
+		"actor", "admin",
+		"actor_name", att.Name,
+		"schedule_id", sched.ID,
+		"schedule_title", sched.Title,
+		"event_id", ev.ID,
+		"event_name", ev.Name,
+	)
 	return nil
 }
 

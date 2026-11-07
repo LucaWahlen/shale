@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"log/slog"
+	"strconv"
 	"strings"
 
 	"shale/internal/domain"
@@ -11,12 +13,12 @@ type ScheduleService struct {
 	schedules domain.ScheduleRepository
 	events    domain.EventRepository
 	attendees domain.AttendeeRepository
-	audit     *AuditService
+	settings  domain.SettingsRepository
 	clock     Clock
 }
 
-func NewScheduleService(schedules domain.ScheduleRepository, events domain.EventRepository, attendees domain.AttendeeRepository, audit *AuditService, clock Clock) *ScheduleService {
-	return &ScheduleService{schedules: schedules, events: events, attendees: attendees, audit: audit, clock: clock}
+func NewScheduleService(schedules domain.ScheduleRepository, events domain.EventRepository, attendees domain.AttendeeRepository, settings domain.SettingsRepository, clock Clock) *ScheduleService {
+	return &ScheduleService{schedules: schedules, events: events, attendees: attendees, settings: settings, clock: clock}
 }
 
 type ScheduleInput struct {
@@ -80,11 +82,40 @@ func validateDescription(desc string) (string, error) {
 	return trimmed, nil
 }
 
+func (s *ScheduleService) Prune(ctx context.Context) {
+	if s == nil || s.schedules == nil || s.settings == nil {
+		return
+	}
+	v, err := s.settings.Get(ctx, domain.SettingEventRetentionDays)
+	if err != nil {
+		return
+	}
+	days, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || days <= 0 {
+		return
+	}
+	cutoff := s.clock().AddDate(0, 0, -days).Format(domain.StartsAtFormat)
+	deletedEvents, deletedSchedules, err := s.schedules.DeleteExpired(ctx, cutoff)
+	if err != nil {
+		slog.Error("failed to prune expired events", "error", err)
+		return
+	}
+	if deletedEvents > 0 || deletedSchedules > 0 {
+		slog.Info("pruned expired events",
+			"deleted_events", deletedEvents,
+			"deleted_schedules", deletedSchedules,
+			"cutoff", cutoff,
+		)
+	}
+}
+
 func (s *ScheduleService) List(ctx context.Context) ([]domain.ScheduleWithCount, error) {
+	s.Prune(ctx)
 	return s.schedules.List(ctx)
 }
 
 func (s *ScheduleService) ListDetailed(ctx context.Context, q domain.ScheduleListQuery) (SchedulePageDetail, error) {
+	s.Prune(ctx)
 	q.Now = s.clock().Format(domain.StartsAtFormat)
 	page, err := s.schedules.ListPage(ctx, q)
 	if err != nil {
@@ -127,16 +158,11 @@ func scheduleIsPast(events []EventDetail, now string) bool {
 }
 
 func eventEndAt(e domain.Event) string {
-	if e.EndsAt != "" {
-		return e.EndsAt
-	}
-	if e.AllDay && len(e.StartsAt) >= 10 {
-		return e.StartsAt[:10] + "T23:59"
-	}
-	return e.StartsAt
+	return domain.EventEndAt(e.StartsAt, e.EndsAt)
 }
 
 func (s *ScheduleService) Get(ctx context.Context, id string) (ScheduleDetail, error) {
+	s.Prune(ctx)
 	sched, err := s.schedules.GetByID(ctx, id)
 	if err != nil {
 		return ScheduleDetail{}, err
@@ -145,6 +171,7 @@ func (s *ScheduleService) Get(ctx context.Context, id string) (ScheduleDetail, e
 }
 
 func (s *ScheduleService) GetPublic(ctx context.Context, id string) (PublicSchedule, error) {
+	s.Prune(ctx)
 	sched, err := s.schedules.GetByID(ctx, id)
 	if err != nil {
 		return PublicSchedule{}, err
@@ -158,7 +185,7 @@ func (s *ScheduleService) GetPublic(ctx context.Context, id string) (PublicSched
 	for _, ed := range detail.Events {
 		pe := PublicEvent{
 			Event:      ed.Event,
-			Attendable: domain.Attendable(ed.Event.StartsAt, now),
+			Attendable: domain.Attendable(ed.Event.StartsAt, now, ed.Event.EndsAt),
 			Attendees:  make([]PublicAttendee, 0, len(ed.Attendees)),
 		}
 		for _, a := range ed.Attendees {
@@ -198,12 +225,11 @@ func (s *ScheduleService) Create(ctx context.Context, in ScheduleInput) (domain.
 	if err := s.schedules.Create(ctx, &sched); err != nil {
 		return domain.Schedule{}, err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionScheduleCreated,
-		Actor:         domain.AuditActorAdmin,
-		ScheduleID:    sched.ID,
-		ScheduleTitle: sched.Title,
-	})
+	slog.Info("schedule created",
+		"actor", "admin",
+		"schedule_id", sched.ID,
+		"schedule_title", sched.Title,
+	)
 	return sched, nil
 }
 
@@ -224,12 +250,11 @@ func (s *ScheduleService) Update(ctx context.Context, id string, in ScheduleInpu
 	if err := s.schedules.Update(ctx, &existing); err != nil {
 		return domain.Schedule{}, err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionScheduleUpdated,
-		Actor:         domain.AuditActorAdmin,
-		ScheduleID:    existing.ID,
-		ScheduleTitle: existing.Title,
-	})
+	slog.Info("schedule updated",
+		"actor", "admin",
+		"schedule_id", existing.ID,
+		"schedule_title", existing.Title,
+	)
 	return existing, nil
 }
 
@@ -241,12 +266,11 @@ func (s *ScheduleService) Delete(ctx context.Context, id string) error {
 	if err := s.schedules.Delete(ctx, id); err != nil {
 		return err
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionScheduleDeleted,
-		Actor:         domain.AuditActorAdmin,
-		ScheduleID:    existing.ID,
-		ScheduleTitle: existing.Title,
-	})
+	slog.Info("schedule deleted",
+		"actor", "admin",
+		"schedule_id", existing.ID,
+		"schedule_title", existing.Title,
+	)
 	return nil
 }
 
@@ -267,18 +291,19 @@ func (s *ScheduleService) Duplicate(ctx context.Context, id string, newTitle str
 	if err != nil {
 		return domain.Schedule{}, err
 	}
-	if title != source.Title {
+	if title != created.Title {
+		created.Title = title
 		if err := s.schedules.Update(ctx, &created); err != nil {
 			return domain.Schedule{}, err
 		}
 	}
-	s.audit.Record(ctx, AuditInput{
-		Action:        domain.AuditActionScheduleDuplicate,
-		Actor:         domain.AuditActorAdmin,
-		ScheduleID:    created.ID,
-		ScheduleTitle: created.Title,
-		Detail:        source.Title,
-	})
+	slog.Info("schedule duplicated",
+		"actor", "admin",
+		"schedule_id", created.ID,
+		"schedule_title", created.Title,
+		"source_schedule_id", source.ID,
+		"source_schedule_title", source.Title,
+	)
 	return created, nil
 }
 

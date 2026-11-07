@@ -10,6 +10,7 @@ type ScheduleRepository interface {
 	Update(ctx context.Context, s *Schedule) error
 	Delete(ctx context.Context, id string) error
 	DeleteAll(ctx context.Context) error
+	DeleteExpired(ctx context.Context, cutoffEndsAt string) (int64, int64, error)
 
 	Duplicate(ctx context.Context, id string) (string, error)
 }
@@ -35,12 +36,6 @@ type SettingsRepository interface {
 	Get(ctx context.Context, key string) (string, error)
 	Set(ctx context.Context, key, value string) error
 	All(ctx context.Context) (map[string]string, error)
-}
-
-type AuditRepository interface {
-	Append(ctx context.Context, e *AuditEntry) error
-	List(ctx context.Context, q AuditListQuery) (AuditPage, error)
-	DeleteBefore(ctx context.Context, cutoff string) (int64, error)
 }
 
 type TransactionManager interface {

@@ -90,7 +90,7 @@ func applyMigration(ctx context.Context, conn *sql.DB, name string) error {
 		return fmt.Errorf("apply migration %s: %w", name, err)
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+		`INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)`,
 		name, time.Now().UTC().Format(time.RFC3339)); err != nil {
 		return fmt.Errorf("record migration %s: %w", name, err)
 	}

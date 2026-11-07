@@ -5,7 +5,7 @@ const (
 	SettingAppName            = "app_name"
 	SettingImprintText        = "imprint_text"
 	SettingPrivacyText        = "privacy_text"
-	SettingAuditRetentionDays = "audit_retention_days"
+	SettingEventRetentionDays = "event_retention_days"
 	LanguageEN                = "en"
 	LanguageDE                = "de"
 	DefaultAppName            = "shale"

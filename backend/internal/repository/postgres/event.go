@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func scanEvent(sc interface{ Scan(...any) error }) (domain.Event, error) {
 
 func (r *EventRepo) ListBySchedule(ctx context.Context, scheduleID string) ([]domain.Event, error) {
 	rows, err := r.db.runner(ctx).QueryContext(ctx, `
-		SELECT `+eventColumns+` FROM events WHERE schedule_id = ? ORDER BY starts_at, created_at, rowid`, scheduleID)
+		SELECT `+eventColumns+` FROM events WHERE schedule_id = $1 ORDER BY starts_at, created_at, id`, scheduleID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (r *EventRepo) ListBySchedule(ctx context.Context, scheduleID string) ([]do
 
 func (r *EventRepo) ListAll(ctx context.Context) ([]domain.Event, error) {
 	rows, err := r.db.runner(ctx).QueryContext(ctx,
-		`SELECT `+eventColumns+` FROM events ORDER BY schedule_id, starts_at, rowid`)
+		`SELECT `+eventColumns+` FROM events ORDER BY schedule_id, starts_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func collectEvents(rows *sql.Rows) ([]domain.Event, error) {
 
 func (r *EventRepo) GetByID(ctx context.Context, id string) (domain.Event, error) {
 	row := r.db.runner(ctx).QueryRowContext(ctx,
-		`SELECT `+eventColumns+` FROM events WHERE id = ?`, id)
+		`SELECT `+eventColumns+` FROM events WHERE id = $1`, id)
 	e, err := scanEvent(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Event{}, domain.ErrNotFound("event")
@@ -82,7 +82,7 @@ func (r *EventRepo) Create(ctx context.Context, e *domain.Event) error {
 	}
 	_, err := r.db.runner(ctx).ExecContext(ctx, `
 		INSERT INTO events (id, schedule_id, name, description, location, starts_at, all_day, ends_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		e.ID, e.ScheduleID, e.Name, e.Description, e.Location, e.StartsAt, boolToInt(e.AllDay), e.EndsAt, formatTime(now), formatTime(now))
 	return mapConstraint(err, "schedule does not exist")
 }
@@ -91,8 +91,8 @@ func (r *EventRepo) Update(ctx context.Context, e *domain.Event) error {
 	now := timeNow()
 	e.UpdatedAt = now
 	res, err := r.db.runner(ctx).ExecContext(ctx, `
-		UPDATE events SET name = ?, description = ?, location = ?, starts_at = ?, all_day = ?, ends_at = ?, updated_at = ?
-		WHERE id = ?`,
+		UPDATE events SET name = $1, description = $2, location = $3, starts_at = $4, all_day = $5, ends_at = $6, updated_at = $7
+		WHERE id = $8`,
 		e.Name, e.Description, e.Location, e.StartsAt, boolToInt(e.AllDay), e.EndsAt, formatTime(now), e.ID)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func (r *EventRepo) Update(ctx context.Context, e *domain.Event) error {
 }
 
 func (r *EventRepo) Delete(ctx context.Context, id string) error {
-	res, err := r.db.runner(ctx).ExecContext(ctx, `DELETE FROM events WHERE id = ?`, id)
+	res, err := r.db.runner(ctx).ExecContext(ctx, `DELETE FROM events WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}

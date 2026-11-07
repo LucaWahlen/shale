@@ -11,7 +11,7 @@ import (
 const (
 	MaxAppNameRunes       = 50
 	MaxLegalTextRunes     = 20000
-	MaxAuditRetentionDays = 3650
+	MaxEventRetentionDays = 3650
 )
 
 type SettingsService struct {
@@ -27,7 +27,7 @@ type SettingsView struct {
 	DefaultLanguage    string
 	ImprintText        string
 	PrivacyText        string
-	AuditRetentionDays int
+	EventRetentionDays int
 }
 
 func (s *SettingsService) Get(ctx context.Context) (SettingsView, error) {
@@ -44,8 +44,8 @@ func (s *SettingsService) Get(ctx context.Context) (SettingsView, error) {
 	imprint := s.getText(ctx, domain.SettingImprintText)
 	privacy := s.getText(ctx, domain.SettingPrivacyText)
 	retention := 0
-	if v, err := s.settings.Get(ctx, domain.SettingAuditRetentionDays); err == nil {
-		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 0 && n <= MaxAuditRetentionDays {
+	if v, err := s.settings.Get(ctx, domain.SettingEventRetentionDays); err == nil {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 0 && n <= MaxEventRetentionDays {
 			retention = n
 		}
 	}
@@ -54,7 +54,7 @@ func (s *SettingsService) Get(ctx context.Context) (SettingsView, error) {
 		DefaultLanguage:    lang,
 		ImprintText:        imprint,
 		PrivacyText:        privacy,
-		AuditRetentionDays: retention,
+		EventRetentionDays: retention,
 	}, nil
 }
 
@@ -105,16 +105,16 @@ func (s *SettingsService) setText(ctx context.Context, key, text string) error {
 	return s.settings.Set(ctx, key, trimmed)
 }
 
-func (s *SettingsService) SetAuditRetentionDays(ctx context.Context, days int) error {
-	if days < 0 || days > MaxAuditRetentionDays {
-		return domain.Errorf(domain.KindInvalid, "audit_retention_days must be between 0 and %d", MaxAuditRetentionDays)
+func (s *SettingsService) SetEventRetentionDays(ctx context.Context, days int) error {
+	if days < 0 || days > MaxEventRetentionDays {
+		return domain.Errorf(domain.KindInvalid, "event_retention_days must be between 0 and %d", MaxEventRetentionDays)
 	}
-	return s.settings.Set(ctx, domain.SettingAuditRetentionDays, strconv.Itoa(days))
+	return s.settings.Set(ctx, domain.SettingEventRetentionDays, strconv.Itoa(days))
 }
 
 func validRetention(v string) bool {
 	n, err := strconv.Atoi(strings.TrimSpace(v))
-	return err == nil && n >= 0 && n <= MaxAuditRetentionDays
+	return err == nil && n >= 0 && n <= MaxEventRetentionDays
 }
 
 func (s *SettingsService) All(ctx context.Context) (map[string]string, error) {
@@ -128,8 +128,8 @@ func (s *SettingsService) All(ctx context.Context) (map[string]string, error) {
 	if v, ok := values[domain.SettingAppName]; !ok || !ValidAppName(v) {
 		values[domain.SettingAppName] = domain.DefaultAppName
 	}
-	if v, ok := values[domain.SettingAuditRetentionDays]; !ok || !validRetention(v) {
-		values[domain.SettingAuditRetentionDays] = "0"
+	if v, ok := values[domain.SettingEventRetentionDays]; !ok || !validRetention(v) {
+		values[domain.SettingEventRetentionDays] = "0"
 	}
 	return values, nil
 }

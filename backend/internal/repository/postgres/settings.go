@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -17,7 +17,7 @@ func NewSettingsRepo(db *DB) *SettingsRepo { return &SettingsRepo{db: db} }
 func (r *SettingsRepo) Get(ctx context.Context, key string) (string, error) {
 	var value string
 	err := r.db.runner(ctx).QueryRowContext(ctx,
-		`SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
+		`SELECT value FROM settings WHERE key = $1`, key).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", domain.ErrNotFound("setting")
 	}
@@ -26,7 +26,7 @@ func (r *SettingsRepo) Get(ctx context.Context, key string) (string, error) {
 
 func (r *SettingsRepo) Set(ctx context.Context, key, value string) error {
 	_, err := r.db.runner(ctx).ExecContext(ctx, `
-		INSERT INTO settings (key, value) VALUES (?, ?)
+		INSERT INTO settings (key, value) VALUES ($1, $2)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
 }

@@ -1,8 +1,9 @@
 
 
+import { useSyncExternalStore } from "react";
 import { Button } from "@heroui/react";
 
-import { currentTheme, toggleTheme } from "../lib/theme";
+import { currentTheme, subscribeTheme, toggleTheme } from "../lib/theme";
 
 function SunIcon() {
   return (
@@ -22,7 +23,8 @@ function MoonIcon() {
 }
 
 export function ThemeToggle() {
-  const isDark = currentTheme() === "dark";
+  const theme = useSyncExternalStore(subscribeTheme, currentTheme, () => "light");
+  const isDark = theme === "dark";
   return (
     <Button
       variant="ghost"

@@ -1,11 +1,22 @@
 export type Theme = "light" | "dark";
 
 const THEME_KEY = "shale.theme";
+const listeners = new Set<() => void>();
 
 function apply(theme: Theme): void {
   document.documentElement.classList.toggle("dark", theme === "dark");
   document.documentElement.setAttribute("data-theme", theme);
   document.documentElement.style.colorScheme = theme;
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
+export function subscribeTheme(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function currentTheme(): Theme {

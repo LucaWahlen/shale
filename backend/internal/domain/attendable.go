@@ -59,20 +59,32 @@ func NormalizeAllDayStartsAt(startsAt string) (string, bool) {
 	return time.Date(st.Year(), st.Month(), st.Day(), 0, 0, 0, 0, time.UTC).Format(StartsAtFormat), true
 }
 
-func Attendable(startsAt string, now time.Time) bool {
-	st, ok := ParseStartsAt(startsAt)
-	if !ok {
-		return false
+// EventEndAt returns the end-of-calendar-day cutoff (YYYY-MM-DDT23:59) for an
+// event. When endsAt is set, its date is used; otherwise startsAt's date is used.
+func EventEndAt(startsAt, endsAt string) string {
+	if _, ok := ParseStartsAt(startsAt); !ok {
+		return ""
 	}
-	naiveNow := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), 0, 0, time.UTC)
-	if !st.Before(naiveNow) {
-		return true
+	if endsAt != "" {
+		if !ValidEndsAt(startsAt, endsAt) {
+			return ""
+		}
+		return endsAt[:10] + "T23:59"
 	}
-	return sameDate(st, naiveNow)
+	return startsAt[:10] + "T23:59"
 }
 
-func sameDate(a, b time.Time) bool {
-	return a.Year() == b.Year() && a.Month() == b.Month() && a.Day() == b.Day()
+func Attendable(startsAt string, now time.Time, endsAt ...string) bool {
+	end := ""
+	if len(endsAt) > 0 {
+		end = endsAt[0]
+	}
+	cutoff := EventEndAt(startsAt, end)
+	if cutoff == "" {
+		return false
+	}
+	naiveNow := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), 0, 0, time.UTC).Format(StartsAtFormat)
+	return cutoff >= naiveNow
 }
 
 func StartsAtFromParts(date, timeOfDay string) (string, error) {

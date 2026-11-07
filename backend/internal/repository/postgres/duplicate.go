@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 func (r *ScheduleRepo) listEventsForDuplicate(ctx context.Context, scheduleID string) ([]domain.Event, error) {
 	rows, err := r.db.runner(ctx).QueryContext(ctx, `
 		SELECT id, schedule_id, name, description, location, starts_at, all_day, ends_at, created_at, updated_at
-		FROM events WHERE schedule_id = ? ORDER BY starts_at, rowid`, scheduleID)
+		FROM events WHERE schedule_id = $1 ORDER BY starts_at, id`, scheduleID)
 	if err != nil {
 		return nil, err
 	}
@@ -35,9 +35,10 @@ func (r *ScheduleRepo) createEventForDuplicate(ctx context.Context, e *domain.Ev
 	if e.ID == "" {
 		e.ID = domain.NewID()
 	}
+	now := formatTime(timeNow())
 	_, err := r.db.runner(ctx).ExecContext(ctx, `
 		INSERT INTO events (id, schedule_id, name, description, location, starts_at, all_day, ends_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.ID, e.ScheduleID, e.Name, e.Description, e.Location, e.StartsAt, boolToInt(e.AllDay), e.EndsAt, formatTime(timeNow()), formatTime(timeNow()))
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		e.ID, e.ScheduleID, e.Name, e.Description, e.Location, e.StartsAt, boolToInt(e.AllDay), e.EndsAt, now, now)
 	return err
 }

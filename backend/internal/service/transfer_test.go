@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,7 +11,8 @@ import (
 
 	"shale/internal/db"
 	"shale/internal/domain"
-	"shale/internal/repository/sqlite"
+	"shale/internal/repository/memory"
+	"shale/internal/repository/postgres"
 )
 
 type transferEnv struct {
@@ -24,30 +25,52 @@ type transferEnv struct {
 
 func newTransferEnv(t *testing.T) *transferEnv {
 	t.Helper()
-	conn, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
+	var (
+		scheduleRepo domain.ScheduleRepository
+		eventRepo    domain.EventRepository
+		attendeeRepo domain.AttendeeRepository
+		settingsRepo domain.SettingsRepository
+		tx           domain.TransactionManager
+	)
+
+	if dsn := os.Getenv("SHALE_TEST_DATABASE_URL"); dsn != "" {
+		conn, err := db.Open(dsn)
+		if err != nil {
+			t.Fatalf("open db: %v", err)
+		}
+		t.Cleanup(func() { conn.Close() })
+		if err := db.Migrate(context.Background(), conn); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		if _, err := conn.Exec(`DELETE FROM schedules; DELETE FROM settings; INSERT INTO settings (key, value) VALUES ('default_language', 'en')`); err != nil {
+			t.Fatalf("reset db: %v", err)
+		}
+		store := postgres.New(conn)
+		scheduleRepo = postgres.NewScheduleRepo(store)
+		eventRepo = postgres.NewEventRepo(store)
+		attendeeRepo = postgres.NewAttendeeRepo(store)
+		settingsRepo = postgres.NewSettingsRepo(store)
+		tx = store
+	} else {
+		store := memory.New()
+		scheduleRepo = memory.NewScheduleRepo(store)
+		eventRepo = memory.NewEventRepo(store)
+		attendeeRepo = memory.NewAttendeeRepo(store)
+		settingsRepo = memory.NewSettingsRepo(store)
+		tx = store
 	}
-	t.Cleanup(func() { conn.Close() })
-	if err := db.Migrate(context.Background(), conn); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	store := sqlite.New(conn)
-	scheduleRepo := sqlite.NewScheduleRepo(store)
-	eventRepo := sqlite.NewEventRepo(store)
-	attendeeRepo := sqlite.NewAttendeeRepo(store)
-	settingsRepo := sqlite.NewSettingsRepo(store)
+
 	clock := func() time.Time { return time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC) }
-	schedules := NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, nil, clock)
-	events := NewEventService(scheduleRepo, eventRepo, nil)
+	schedules := NewScheduleService(scheduleRepo, eventRepo, attendeeRepo, settingsRepo, clock)
+	events := NewEventService(scheduleRepo, eventRepo)
 	settings := NewSettingsService(settingsRepo)
-	transfer := NewTransferService(scheduleRepo, eventRepo, attendeeRepo, settings, store, clock)
+	transfer := NewTransferService(scheduleRepo, eventRepo, attendeeRepo, settings, tx, clock)
 	return &transferEnv{
 		schedules:   schedules,
 		events:      events,
 		settings:    settings,
 		transfer:    transfer,
-		attendeeSvc: NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, nil, clock),
+		attendeeSvc: NewAttendeeService(scheduleRepo, eventRepo, attendeeRepo, clock),
 	}
 }
 

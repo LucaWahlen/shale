@@ -1,9 +1,10 @@
-package sqlite
+package postgres
 
 import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -15,8 +16,6 @@ type ScheduleRepo struct {
 }
 
 func NewScheduleRepo(db *DB) *ScheduleRepo { return &ScheduleRepo{db: db} }
-
-const scheduleColumns = `id, title, description, created_at, updated_at`
 
 func scanSchedule(sc interface{ Scan(...any) error }) (domain.Schedule, error) {
 	var (
@@ -46,11 +45,13 @@ const scheduleSelect = `s.id, s.title, s.description, s.created_at, s.updated_at
 	COALESCE(MAX(e.starts_at), ''),
 	COALESCE(` + lastEndsAtExpr + `, '')`
 
-const lastEndsAtExpr = `MAX(CASE
-	WHEN e.ends_at <> '' THEN e.ends_at
-	WHEN e.all_day = 1 THEN substr(e.starts_at, 1, 10) || 'T23:59'
-	ELSE e.starts_at
-END)`
+const eventEffectiveEndExpr = `CASE
+	WHEN e.ends_at <> '' THEN substr(e.ends_at, 1, 10) || 'T23:59'
+	WHEN e.starts_at IS NOT NULL AND e.starts_at <> '' THEN substr(e.starts_at, 1, 10) || 'T23:59'
+	ELSE NULL
+END`
+
+const lastEndsAtExpr = `MAX(` + eventEffectiveEndExpr + `)`
 
 func (r *ScheduleRepo) List(ctx context.Context) ([]domain.ScheduleWithCount, error) {
 	rows, err := r.db.runner(ctx).QueryContext(ctx, `
@@ -58,7 +59,7 @@ func (r *ScheduleRepo) List(ctx context.Context) ([]domain.ScheduleWithCount, er
 		FROM schedules s
 		LEFT JOIN events e ON e.schedule_id = s.id
 		GROUP BY s.id
-		ORDER BY s.created_at DESC, s.rowid DESC`)
+		ORDER BY s.created_at DESC, s.id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -79,38 +80,45 @@ func (r *ScheduleRepo) ListPage(ctx context.Context, q domain.ScheduleListQuery)
 		size = 100
 	}
 
-	var (
-		whereSQL  string
-		whereArgs []any
-	)
+	args := []any{}
+	nextArg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	var whereSQL string
 	if search := strings.TrimSpace(q.Search); search != "" {
 		like := "%" + escapeLike(search) + "%"
+		p1 := nextArg(like)
+		p2 := nextArg(like)
+		p3 := nextArg(like)
+		p4 := nextArg(like)
 		whereSQL = `WHERE (
-			s.title LIKE ? ESCAPE '\' COLLATE NOCASE
-			OR s.description LIKE ? ESCAPE '\' COLLATE NOCASE
+			s.title ILIKE ` + p1 + ` ESCAPE '\'
+			OR s.description ILIKE ` + p2 + ` ESCAPE '\'
 			OR EXISTS (
 				SELECT 1 FROM events se
 				WHERE se.schedule_id = s.id
-				  AND (se.name LIKE ? ESCAPE '\' COLLATE NOCASE
-				       OR se.location LIKE ? ESCAPE '\' COLLATE NOCASE)
+				  AND (se.name ILIKE ` + p3 + ` ESCAPE '\'
+				       OR se.location ILIKE ` + p4 + ` ESCAPE '\')
 			)
 		)`
-		whereArgs = []any{like, like, like, like}
 	}
 
-	var (
-		havingSQL  string
-		havingArgs []any
-	)
+	var havingSQL string
 	if !q.IncludePast {
-		havingSQL = `HAVING COALESCE(` + lastEndsAtExpr + `, '') = '' OR COALESCE(` + lastEndsAtExpr + `, '') >= ?`
-		havingArgs = []any{q.Now}
+		pNow := nextArg(q.Now)
+		havingSQL = `HAVING COALESCE(` + lastEndsAtExpr + `, '') = '' OR COALESCE(` + lastEndsAtExpr + `, '') >= ` + pNow
 	}
+
+	countArgs := append([]any{}, args...)
+
+	pPastNow := nextArg(q.Now)
+	pLimit := nextArg(size)
+	pOffset := nextArg((page - 1) * size)
 
 	orderBy := scheduleOrderBy(q.Sort)
-	pastFirst := `CASE WHEN COALESCE(` + lastEndsAtExpr + `, '') <> '' AND COALESCE(` + lastEndsAtExpr + `, '') < ? THEN 1 ELSE 0 END ASC, `
-
-	limitArgs := append(append(append(append([]any{}, whereArgs...), havingArgs...), q.Now), size, (page-1)*size)
+	pastFirst := `CASE WHEN COALESCE(` + lastEndsAtExpr + `, '') <> '' AND COALESCE(` + lastEndsAtExpr + `, '') < ` + pPastNow + ` THEN 1 ELSE 0 END ASC, `
 
 	rows, err := r.db.runner(ctx).QueryContext(ctx, `
 		SELECT `+scheduleSelect+`
@@ -120,7 +128,7 @@ func (r *ScheduleRepo) ListPage(ctx context.Context, q domain.ScheduleListQuery)
 		GROUP BY s.id
 		`+havingSQL+`
 		ORDER BY `+pastFirst+orderBy+`
-		LIMIT ? OFFSET ?`, limitArgs...)
+		LIMIT `+pLimit+` OFFSET `+pOffset, args...)
 	if err != nil {
 		return domain.SchedulePage{}, err
 	}
@@ -130,7 +138,6 @@ func (r *ScheduleRepo) ListPage(ctx context.Context, q domain.ScheduleListQuery)
 		return domain.SchedulePage{}, err
 	}
 
-	countArgs := append(append([]any{}, whereArgs...), havingArgs...)
 	var total int
 	err = r.db.runner(ctx).QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM (
@@ -140,7 +147,7 @@ func (r *ScheduleRepo) ListPage(ctx context.Context, q domain.ScheduleListQuery)
 			`+whereSQL+`
 			GROUP BY s.id
 			`+havingSQL+`
-		)`, countArgs...).Scan(&total)
+		) AS sub`, countArgs...).Scan(&total)
 	if err != nil {
 		return domain.SchedulePage{}, err
 	}
@@ -151,19 +158,19 @@ func (r *ScheduleRepo) ListPage(ctx context.Context, q domain.ScheduleListQuery)
 func scheduleOrderBy(sort string) string {
 	switch sort {
 	case "oldest":
-		return "s.created_at ASC, s.rowid ASC"
+		return "s.created_at ASC, s.id ASC"
 	case "title":
-		return "s.title COLLATE NOCASE ASC, s.created_at DESC"
+		return "LOWER(s.title) ASC, s.created_at DESC"
 	case "title_desc":
-		return "s.title COLLATE NOCASE DESC, s.created_at DESC"
+		return "LOWER(s.title) DESC, s.created_at DESC"
 	case "updated":
-		return "s.updated_at DESC, s.rowid DESC"
+		return "s.updated_at DESC, s.id DESC"
 	case "soonest":
 		return "COALESCE(MIN(e.starts_at), '') = '' ASC, MIN(e.starts_at) ASC, s.created_at DESC"
 	case "events":
 		return "COUNT(e.id) DESC, s.created_at DESC"
 	default:
-		return "s.created_at DESC, s.rowid DESC"
+		return "s.created_at DESC, s.id DESC"
 	}
 }
 
@@ -194,7 +201,7 @@ func collectSchedules(rows *sql.Rows) ([]domain.ScheduleWithCount, error) {
 
 func (r *ScheduleRepo) GetByID(ctx context.Context, id string) (domain.Schedule, error) {
 	row := r.db.runner(ctx).QueryRowContext(ctx,
-		`SELECT `+`id, title, description, created_at, updated_at`+` FROM schedules WHERE id = ?`, id)
+		`SELECT id, title, description, created_at, updated_at FROM schedules WHERE id = $1`, id)
 	s, err := scanSchedule(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Schedule{}, domain.ErrNotFound("schedule")
@@ -210,7 +217,7 @@ func (r *ScheduleRepo) Create(ctx context.Context, s *domain.Schedule) error {
 	}
 	_, err := r.db.runner(ctx).ExecContext(ctx, `
 		INSERT INTO schedules (id, title, description, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)`,
+		VALUES ($1, $2, $3, $4, $5)`,
 		s.ID, s.Title, s.Description, formatTime(now), formatTime(now))
 	return mapConstraint(err, "schedule conflict")
 }
@@ -219,7 +226,7 @@ func (r *ScheduleRepo) Update(ctx context.Context, s *domain.Schedule) error {
 	now := time.Now().UTC()
 	s.UpdatedAt = now
 	res, err := r.db.runner(ctx).ExecContext(ctx, `
-		UPDATE schedules SET title = ?, description = ?, updated_at = ? WHERE id = ?`,
+		UPDATE schedules SET title = $1, description = $2, updated_at = $3 WHERE id = $4`,
 		s.Title, s.Description, formatTime(now), s.ID)
 	if err != nil {
 		return err
@@ -233,7 +240,7 @@ func (r *ScheduleRepo) Update(ctx context.Context, s *domain.Schedule) error {
 }
 
 func (r *ScheduleRepo) Delete(ctx context.Context, id string) error {
-	res, err := r.db.runner(ctx).ExecContext(ctx, `DELETE FROM schedules WHERE id = ?`, id)
+	res, err := r.db.runner(ctx).ExecContext(ctx, `DELETE FROM schedules WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
@@ -248,6 +255,57 @@ func (r *ScheduleRepo) Delete(ctx context.Context, id string) error {
 func (r *ScheduleRepo) DeleteAll(ctx context.Context) error {
 	_, err := r.db.runner(ctx).ExecContext(ctx, `DELETE FROM schedules`)
 	return err
+}
+
+func (r *ScheduleRepo) DeleteExpired(ctx context.Context, cutoffEndsAt string) (int64, int64, error) {
+	var deletedEvents, deletedSchedules int64
+	err := r.db.Do(ctx, func(ctx context.Context) error {
+		rows, err := r.db.runner(ctx).QueryContext(ctx, `
+			DELETE FROM events
+			WHERE (CASE
+				WHEN ends_at <> '' THEN substr(ends_at, 1, 10) || 'T23:59'
+				ELSE substr(starts_at, 1, 10) || 'T23:59'
+			END) < $1
+			RETURNING schedule_id`, cutoffEndsAt)
+		if err != nil {
+			return err
+		}
+		affected := map[string]struct{}{}
+		for rows.Next() {
+			var sid string
+			if err := rows.Scan(&sid); err != nil {
+				rows.Close()
+				return err
+			}
+			affected[sid] = struct{}{}
+			deletedEvents++
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		rows.Close()
+
+		for sid := range affected {
+			res, err := r.db.runner(ctx).ExecContext(ctx, `
+				DELETE FROM schedules
+				WHERE id = $1
+				  AND NOT EXISTS (SELECT 1 FROM events WHERE schedule_id = $1)`, sid)
+			if err != nil {
+				return err
+			}
+			n, err := rowsAffected(res)
+			if err != nil {
+				return err
+			}
+			deletedSchedules += n
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	return deletedEvents, deletedSchedules, nil
 }
 
 func (r *ScheduleRepo) Duplicate(ctx context.Context, id string) (string, error) {

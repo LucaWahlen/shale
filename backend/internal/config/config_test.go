@@ -40,14 +40,14 @@ func TestLoadRequiresAdminPassword(t *testing.T) {
 
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("SHALE_ADMIN_PASSWORD", "pw")
-	t.Setenv("SHALE_DB_PATH", "")
+	t.Setenv("SHALE_DATABASE_URL", "")
 	t.Setenv("SHALE_ADDR", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.DBPath != "/data/shale.db" {
-		t.Errorf("DBPath = %q, want /data/shale.db", cfg.DBPath)
+	if cfg.DatabaseURL != DefaultDatabaseURL {
+		t.Errorf("DatabaseURL = %q, want %q", cfg.DatabaseURL, DefaultDatabaseURL)
 	}
 	if cfg.Addr != ":8080" {
 		t.Errorf("Addr = %q, want :8080", cfg.Addr)
@@ -56,16 +56,16 @@ func TestLoadDefaults(t *testing.T) {
 
 func TestLoadOverrides(t *testing.T) {
 	t.Setenv("SHALE_ADMIN_PASSWORD", "p")
-	t.Setenv("SHALE_DB_PATH", "data/shale.db")
+	t.Setenv("SHALE_DATABASE_URL", "postgres://localhost:5432/shale_dev?sslmode=disable")
 	t.Setenv("SHALE_ADDR", ":9999")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.DBPath != "data/shale.db" || cfg.Addr != ":9999" {
+	if cfg.DatabaseURL != "postgres://localhost:5432/shale_dev?sslmode=disable" || cfg.Addr != ":9999" {
 		t.Errorf("unexpected config: %+v", cfg)
 	}
-	if strings.Contains(cfg.DBPath, "/data") {
+	if strings.Contains(cfg.DatabaseURL, "@postgres:") {
 		t.Errorf("dev override ignored")
 	}
 }
